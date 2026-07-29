@@ -25,7 +25,10 @@ from services.reminders import run_daily_reminders
 from services.seed import seed_data
 
 requests_by_ip: dict[str, deque[float]] = defaultdict(deque)
-scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
+try:
+    scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
+except Exception:
+    scheduler = AsyncIOScheduler()
 
 
 @asynccontextmanager
