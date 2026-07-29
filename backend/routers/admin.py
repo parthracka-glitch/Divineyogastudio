@@ -16,6 +16,20 @@ from services.seed import record_id
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"], dependencies=[Depends(current_admin)])
 
 
+@router.post("/reset-database")
+async def reset_database_route(request: Request, admin: dict = Depends(current_admin)):
+    from core.database import create_indexes
+    from services.seed import seed_data
+    collections = await db.list_collection_names()
+    for name in collections:
+        if not name.startswith("system."):
+            await db[name].delete_many({})
+    await create_indexes()
+    await seed_data()
+    await audit("reset_database", request, admin["id"])
+    return {"message": "Database successfully reset and re-seeded cleanly"}
+
+
 def document(input_data) -> dict:
     data = input_data.model_dump(mode="json")
     return {key: value for key, value in data.items() if value is not None}
