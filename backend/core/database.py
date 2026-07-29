@@ -3,10 +3,21 @@ import os
 from motor.motor_asyncio import AsyncIOMotorClient
 
 
-MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
-DB_NAME = os.environ.get("DB_NAME", "divine_yoga")
+raw_mongo = (os.environ.get("MONGO_URL") or "").strip()
+if not raw_mongo or raw_mongo in ('""', "''"):
+    MONGO_URL = "mongodb://localhost:27017"
+else:
+    MONGO_URL = raw_mongo
 
-client = AsyncIOMotorClient(MONGO_URL)
+raw_db = (os.environ.get("DB_NAME") or "").strip()
+DB_NAME = raw_db if raw_db else "divine_yoga"
+
+try:
+    client = AsyncIOMotorClient(MONGO_URL)
+except Exception as err:
+    print(f"[Database Warning] Invalid MONGO_URL configuration ({MONGO_URL}): {err}. Falling back to localhost client.")
+    client = AsyncIOMotorClient("mongodb://localhost:27017")
+
 db = client[DB_NAME]
 
 
