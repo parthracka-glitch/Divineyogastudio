@@ -10,6 +10,8 @@ export default function BatchesPage() {
   const [notice, setNotice] = useState("");
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
+  const [editingPlan, setEditingPlan] = useState(null);
+  const [editingBatch, setEditingBatch] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const [planForm, setPlanForm] = useState({
@@ -45,20 +47,44 @@ export default function BatchesPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, []);
 
-  const handleCreatePlan = async (e) => {
+  const openCreatePlanModal = () => {
+    setEditingPlan(null);
+    setPlanForm({ name: "", planType: "monthly", amount: "", durationDays: "30" });
+    setIsPlanModalOpen(true);
+  };
+
+  const openEditPlanModal = (plan) => {
+    setEditingPlan(plan);
+    setPlanForm({
+      name: plan.name || "",
+      planType: plan.plan_type || "monthly",
+      amount: String(plan.amount || ""),
+      durationDays: String(plan.duration_days || "30"),
+    });
+    setIsPlanModalOpen(true);
+  };
+
+  const handleSavePlan = async (e) => {
     e.preventDefault();
     setBusy(true);
     try {
-      await api.post("/api/v1/admin/plans", {
+      const payload = {
         name: planForm.name,
         amount: Number(planForm.amount),
         plan_type: planForm.planType,
         duration_days: Number(planForm.durationDays),
         is_active: true,
-      });
-      setNotice("Plan created successfully.");
+      };
+
+      if (editingPlan) {
+        await api.patch(`/api/v1/admin/plans/${editingPlan.id}`, payload);
+        setNotice("Plan updated successfully.");
+      } else {
+        await api.post("/api/v1/admin/plans", payload);
+        setNotice("Plan created successfully.");
+      }
+
       setIsPlanModalOpen(false);
-      setPlanForm({ name: "", planType: "monthly", amount: "", durationDays: "30" });
       load();
     } catch (error) {
       setNotice(formatApiError(error));
@@ -67,12 +93,43 @@ export default function BatchesPage() {
     }
   };
 
-  const handleCreateBatch = async (e) => {
+  const handleDeletePlan = async (planId) => {
+    if (!window.confirm("Are you sure you want to delete this membership plan?")) return;
+    try {
+      await api.delete(`/api/v1/admin/plans/${planId}`);
+      setNotice("Plan deleted.");
+      load();
+    } catch (error) {
+      setNotice(formatApiError(error));
+    }
+  };
+
+  const openCreateBatchModal = () => {
+    setEditingBatch(null);
+    setBatchForm({ name: "", categoryTag: "Mat Yoga", instructorName: "", scheduleDays: "Mon, Wed, Fri", startTime: "07:30", endTime: "08:30", capacity: "15" });
+    setIsBatchModalOpen(true);
+  };
+
+  const openEditBatchModal = (batch) => {
+    setEditingBatch(batch);
+    setBatchForm({
+      name: batch.name || "",
+      categoryTag: batch.category_tag || "Mat Yoga",
+      instructorName: batch.instructor_name || "",
+      scheduleDays: Array.isArray(batch.schedule_days) ? batch.schedule_days.join(", ") : (batch.schedule_days || "Mon, Wed, Fri"),
+      startTime: batch.start_time || "07:30",
+      endTime: batch.end_time || "08:30",
+      capacity: String(batch.capacity || "15"),
+    });
+    setIsBatchModalOpen(true);
+  };
+
+  const handleSaveBatch = async (e) => {
     e.preventDefault();
     setBusy(true);
     try {
       const days = batchForm.scheduleDays.split(",").map(d => d.trim()).filter(Boolean);
-      await api.post("/api/v1/admin/batches", {
+      const payload = {
         name: batchForm.name,
         category_tag: batchForm.categoryTag,
         instructor_name: batchForm.instructorName,
@@ -81,15 +138,33 @@ export default function BatchesPage() {
         end_time: batchForm.endTime,
         capacity: Number(batchForm.capacity),
         is_active: true,
-      });
-      setNotice("Batch created successfully.");
+      };
+
+      if (editingBatch) {
+        await api.patch(`/api/v1/admin/batches/${editingBatch.id}`, payload);
+        setNotice("Batch updated successfully.");
+      } else {
+        await api.post("/api/v1/admin/batches", payload);
+        setNotice("Batch created successfully.");
+      }
+
       setIsBatchModalOpen(false);
-      setBatchForm({ name: "", categoryTag: "Mat Yoga", instructorName: "", scheduleDays: "Mon, Wed, Fri", startTime: "07:30", endTime: "08:30", capacity: "15" });
       load();
     } catch (error) {
       setNotice(formatApiError(error));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const handleDeleteBatch = async (batchId) => {
+    if (!window.confirm("Are you sure you want to delete this batch?")) return;
+    try {
+      await api.delete(`/api/v1/admin/batches/${batchId}`);
+      setNotice("Batch deleted.");
+      load();
+    } catch (error) {
+      setNotice(formatApiError(error));
     }
   };
 
@@ -101,10 +176,10 @@ export default function BatchesPage() {
         description="Keep class schedules and pricing self-serviceable."
         action={
           <div style={{ display: "flex", gap: "10px" }}>
-            <button className="secondary-button" onClick={() => setIsBatchModalOpen(true)}>
+            <button className="secondary-button" onClick={openCreateBatchModal}>
               <Plus size={17} />Add batch
             </button>
-            <button className="primary-button" data-testid="add-plan-button" onClick={() => setIsPlanModalOpen(true)}>
+            <button className="primary-button" data-testid="add-plan-button" onClick={openCreatePlanModal}>
               <Plus size={17} />Add plan
             </button>
           </div>
@@ -119,7 +194,27 @@ export default function BatchesPage() {
       <div className="batch-grid">
         {batches.map((batch) => (
           <article className="batch-card" key={batch.id} data-testid={`batch-card-${batch.id}`}>
-            <span className="tag">{batch.category_tag}</span>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span className="tag">{batch.category_tag}</span>
+              <div style={{ display: "flex", gap: "6px" }}>
+                <button
+                  type="button"
+                  className="table-action"
+                  style={{ padding: "3px 6px", fontSize: "10px" }}
+                  onClick={() => openEditBatchModal(batch)}
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  className="table-action"
+                  style={{ padding: "3px 6px", fontSize: "10px", color: "#ac4932" }}
+                  onClick={() => handleDeleteBatch(batch.id)}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
             <h3>{batch.name}</h3>
             <p>{batch.instructor_name} · {Array.isArray(batch.schedule_days) ? batch.schedule_days.join(" · ") : batch.schedule_days}</p>
             <strong>{batch.start_time}—{batch.end_time}</strong>
@@ -141,7 +236,24 @@ export default function BatchesPage() {
               <small>{plan.plan_type?.replaceAll("_", " ")} · {plan.duration_days} days</small>
             </div>
             <b>₹{plan.amount?.toLocaleString("en-IN")}</b>
-            <span className="status-chip active">Active</span>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <button
+                type="button"
+                className="table-action"
+                style={{ padding: "4px 8px", fontSize: "11px" }}
+                onClick={() => openEditPlanModal(plan)}
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                className="table-action"
+                style={{ padding: "4px 8px", fontSize: "11px", color: "#ac4932" }}
+                onClick={() => handleDeletePlan(plan.id)}
+              >
+                Delete
+              </button>
+            </div>
           </div>
         ))}
         {!plans.length && <p className="empty-copy" style={{ padding: "20px" }}>No membership plans created yet.</p>}
@@ -151,10 +263,10 @@ export default function BatchesPage() {
       <Modal
         isOpen={isPlanModalOpen}
         onClose={() => setIsPlanModalOpen(false)}
-        title="Add Membership Plan"
-        subtitle="Create a new pricing tier for your practitioners."
+        title={editingPlan ? "Edit Membership Plan" : "Add Membership Plan"}
+        subtitle="Configure pricing tier for your practitioners."
       >
-        <form onSubmit={handleCreatePlan} className="modal-form">
+        <form onSubmit={handleSavePlan} className="modal-form">
           <div className="modal-field">
             <label>Plan Name *</label>
             <input
@@ -204,7 +316,7 @@ export default function BatchesPage() {
           <div className="modal-actions">
             <button type="button" className="secondary-button" onClick={() => setIsPlanModalOpen(false)}>Cancel</button>
             <button type="submit" className="primary-button" disabled={busy}>
-              {busy ? "Saving..." : "Save Plan"}
+              {busy ? "Saving..." : (editingPlan ? "Update Plan" : "Save Plan")}
             </button>
           </div>
         </form>
@@ -214,10 +326,10 @@ export default function BatchesPage() {
       <Modal
         isOpen={isBatchModalOpen}
         onClose={() => setIsBatchModalOpen(false)}
-        title="Add Class Batch"
-        subtitle="Schedule a new studio batch."
+        title={editingBatch ? "Edit Class Batch" : "Add Class Batch"}
+        subtitle="Schedule studio batch details."
       >
-        <form onSubmit={handleCreateBatch} className="modal-form">
+        <form onSubmit={handleSaveBatch} className="modal-form">
           <div className="modal-field">
             <label>Batch Name *</label>
             <input
@@ -299,7 +411,7 @@ export default function BatchesPage() {
           <div className="modal-actions">
             <button type="button" className="secondary-button" onClick={() => setIsBatchModalOpen(false)}>Cancel</button>
             <button type="submit" className="primary-button" disabled={busy}>
-              {busy ? "Saving..." : "Save Batch"}
+              {busy ? "Saving..." : (editingBatch ? "Update Batch" : "Save Batch")}
             </button>
           </div>
         </form>

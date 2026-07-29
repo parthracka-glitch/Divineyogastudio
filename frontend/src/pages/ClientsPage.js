@@ -10,6 +10,7 @@ export default function ClientsPage() {
   const [search, setSearch] = useState("");
   const [notice, setNotice] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingClient, setEditingClient] = useState(null);
   const [formData, setFormData] = useState({
     fullName: "",
     phoneNumber: "+91",
@@ -36,27 +37,71 @@ export default function ClientsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, []);
 
-  const handleCreateClient = async (e) => {
+  const openCreateModal = () => {
+    setEditingClient(null);
+    setFormData({
+      fullName: "",
+      phoneNumber: "+91",
+      email: "",
+      status: "active",
+      batchId: "",
+      whatsappOptIn: true,
+    });
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (client) => {
+    setEditingClient(client);
+    setFormData({
+      fullName: client.full_name || "",
+      phoneNumber: client.phone_number || "+91",
+      email: client.email || "",
+      status: client.status || "active",
+      batchId: client.batch_id || "",
+      whatsappOptIn: client.whatsapp_opt_in ?? true,
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleSaveClient = async (e) => {
     e.preventDefault();
     setBusy(true);
     try {
-      await api.post("/api/v1/admin/clients", {
+      const payload = {
         full_name: formData.fullName,
         phone_number: formData.phoneNumber,
         email: formData.email || null,
         batch_id: formData.batchId || null,
         whatsapp_opt_in: formData.whatsappOptIn,
-        join_date: new Date().toISOString().slice(0, 10),
+        join_date: editingClient ? editingClient.join_date : new Date().toISOString().slice(0, 10),
         status: formData.status,
-      });
-      setNotice("Client added successfully.");
+      };
+
+      if (editingClient) {
+        await api.patch(`/api/v1/admin/clients/${editingClient.id}`, payload);
+        setNotice("Client updated successfully.");
+      } else {
+        await api.post("/api/v1/admin/clients", payload);
+        setNotice("Client added successfully.");
+      }
+
       setIsModalOpen(false);
-      setFormData({ fullName: "", phoneNumber: "+91", email: "", status: "active", batchId: "", whatsappOptIn: true });
       load();
     } catch (error) {
       setNotice(formatApiError(error));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const handleDeleteClient = async (clientId) => {
+    if (!window.confirm("Are you sure you want to delete this client record?")) return;
+    try {
+      await api.delete(`/api/v1/admin/clients/${clientId}`);
+      setNotice("Client deleted.");
+      load();
+    } catch (error) {
+      setNotice(formatApiError(error));
     }
   };
 
@@ -67,7 +112,7 @@ export default function ClientsPage() {
         title="Clients"
         description="People, memberships, and their current studio journey."
         action={
-          <button className="primary-button" data-testid="add-client-button" onClick={() => setIsModalOpen(true)}>
+          <button className="primary-button" data-testid="add-client-button" onClick={openCreateModal}>
             <Plus size={17} />Add client
           </button>
         }
@@ -95,6 +140,7 @@ export default function ClientsPage() {
               <th>Batch</th>
               <th>Status</th>
               <th>WhatsApp</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -105,11 +151,31 @@ export default function ClientsPage() {
                 <td>{client.batch_id ? (batches.find(b => b.id === client.batch_id)?.name || "Assigned batch") : "Unassigned"}</td>
                 <td><span className={`status-chip ${client.status}`}>{client.status}</span></td>
                 <td>{client.whatsapp_opt_in ? "Enabled" : "Paused"}</td>
+                <td>
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    <button
+                      type="button"
+                      className="table-action"
+                      style={{ padding: "4px 8px", fontSize: "11px" }}
+                      onClick={() => openEditModal(client)}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="table-action"
+                      style={{ padding: "4px 8px", fontSize: "11px", color: "#ac4932" }}
+                      onClick={() => handleDeleteClient(client.id)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </td>
               </tr>
             ))}
             {!clients.length && (
               <tr>
-                <td colSpan="5" className="empty-cell" data-testid="clients-empty-state">No clients match this view.</td>
+                <td colSpan="6" className="empty-cell" data-testid="clients-empty-state">No clients match this view.</td>
               </tr>
             )}
           </tbody>
@@ -119,10 +185,10 @@ export default function ClientsPage() {
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title="Add New Client"
-        subtitle="Register a practitioner in your studio CRM."
+        title={editingClient ? "Edit Client" : "Add New Client"}
+        subtitle="Register or manage a practitioner in your studio CRM."
       >
-        <form onSubmit={handleCreateClient} className="modal-form">
+        <form onSubmit={handleSaveClient} className="modal-form">
           <div className="modal-field">
             <label>Full Name *</label>
             <input
@@ -193,7 +259,7 @@ export default function ClientsPage() {
           <div className="modal-actions">
             <button type="button" className="secondary-button" onClick={() => setIsModalOpen(false)}>Cancel</button>
             <button type="submit" className="primary-button" disabled={busy}>
-              {busy ? "Saving..." : "Save Client"}
+              {busy ? "Saving..." : (editingClient ? "Update Client" : "Save Client")}
             </button>
           </div>
         </form>

@@ -136,6 +136,24 @@ async def create_batch(input: BatchInput, request: Request, admin: dict = Depend
     return data
 
 
+@router.patch("/batches/{batch_id}")
+async def update_batch(batch_id: str, input: BatchInput, request: Request, admin: dict = Depends(current_admin)):
+    await find_or_404("batches", batch_id)
+    data = document(input)
+    data["updated_at"] = now_iso()
+    await db.batches.update_one({"id": batch_id}, {"$set": data})
+    await audit("batch_updated", request, admin["id"], {"batch_id": batch_id})
+    return await find_or_404("batches", batch_id)
+
+
+@router.delete("/batches/{batch_id}")
+async def delete_batch(batch_id: str, request: Request, admin: dict = Depends(current_admin)):
+    await find_or_404("batches", batch_id)
+    await db.batches.delete_one({"id": batch_id})
+    await audit("batch_deleted", request, admin["id"], {"batch_id": batch_id})
+    return {"ok": True}
+
+
 @router.get("/plans")
 async def list_plans():
     return await db.membership_plans.find({}, {"_id": 0}).to_list(100)
@@ -147,3 +165,20 @@ async def create_plan(input: PlanInput, request: Request, admin: dict = Depends(
     await db.membership_plans.insert_one(data)
     await audit("plan_created", request, admin["id"], {"plan_id": data["id"]})
     return data
+
+
+@router.patch("/plans/{plan_id}")
+async def update_plan(plan_id: str, input: PlanInput, request: Request, admin: dict = Depends(current_admin)):
+    await find_or_404("membership_plans", plan_id)
+    data = document(input)
+    await db.membership_plans.update_one({"id": plan_id}, {"$set": data})
+    await audit("plan_updated", request, admin["id"], {"plan_id": plan_id})
+    return await find_or_404("membership_plans", plan_id)
+
+
+@router.delete("/plans/{plan_id}")
+async def delete_plan(plan_id: str, request: Request, admin: dict = Depends(current_admin)):
+    await find_or_404("membership_plans", plan_id)
+    await db.membership_plans.delete_one({"id": plan_id})
+    await audit("plan_deleted", request, admin["id"], {"plan_id": plan_id})
+    return {"ok": True}

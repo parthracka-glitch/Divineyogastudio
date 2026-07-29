@@ -10,6 +10,7 @@ export default function FinancesPage() {
   const [filter, setFilter] = useState("overdue");
   const [notice, setNotice] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingPayment, setEditingPayment] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const [paymentForm, setPaymentForm] = useState({
@@ -37,33 +38,78 @@ export default function FinancesPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [filter]);
 
-  const handleCreatePayment = async (e) => {
+  const openCreateModal = () => {
+    setEditingPayment(null);
+    setPaymentForm({
+      clientId: "",
+      amountDue: "",
+      amountPaid: "0",
+      dueDate: new Date().toISOString().slice(0, 10),
+      paymentStatus: "pending",
+      notes: "Monthly membership fee",
+    });
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (payment) => {
+    setEditingPayment(payment);
+    setPaymentForm({
+      clientId: payment.client_id || "",
+      amountDue: String(payment.amount_due || ""),
+      amountPaid: String(payment.amount_paid || "0"),
+      dueDate: payment.due_date || new Date().toISOString().slice(0, 10),
+      paymentStatus: payment.payment_status || "pending",
+      notes: payment.notes || "",
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleSavePayment = async (e) => {
     e.preventDefault();
     setBusy(true);
     try {
-      await api.post("/api/v1/admin/payments", {
-        client_id: paymentForm.clientId,
-        amount_due: Number(paymentForm.amountDue),
-        amount_paid: Number(paymentForm.amountPaid),
-        due_date: paymentForm.dueDate,
-        payment_status: Number(paymentForm.amountPaid) >= Number(paymentForm.amountDue) ? "paid" : paymentForm.paymentStatus,
-        notes: paymentForm.notes,
-      });
-      setNotice("Payment record created successfully.");
+      const amountDue = Number(paymentForm.amountDue);
+      const amountPaid = Number(paymentForm.amountPaid);
+      const status = amountPaid >= amountDue ? "paid" : paymentForm.paymentStatus;
+
+      if (editingPayment) {
+        await api.patch(`/api/v1/admin/payments/${editingPayment.id}`, {
+          amount_due: amountDue,
+          amount_paid: amountPaid,
+          due_date: paymentForm.dueDate,
+          payment_status: status,
+          notes: paymentForm.notes,
+        });
+        setNotice("Payment record updated.");
+      } else {
+        await api.post("/api/v1/admin/payments", {
+          client_id: paymentForm.clientId,
+          amount_due: amountDue,
+          amount_paid: amountPaid,
+          due_date: paymentForm.dueDate,
+          payment_status: status,
+          notes: paymentForm.notes,
+        });
+        setNotice("Payment record created.");
+      }
+
       setIsModalOpen(false);
-      setPaymentForm({
-        clientId: "",
-        amountDue: "",
-        amountPaid: "0",
-        dueDate: new Date().toISOString().slice(0, 10),
-        paymentStatus: "pending",
-        notes: "Monthly membership fee",
-      });
       load();
     } catch (error) {
       setNotice(formatApiError(error));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const handleDeletePayment = async (paymentId) => {
+    if (!window.confirm("Are you sure you want to delete this payment record?")) return;
+    try {
+      await api.delete(`/api/v1/admin/payments/${paymentId}`);
+      setNotice("Payment record deleted.");
+      load();
+    } catch (error) {
+      setNotice(formatApiError(error));
     }
   };
 
@@ -97,7 +143,7 @@ export default function FinancesPage() {
             <button className="secondary-button" data-testid="export-ledger-button" onClick={exportLedger}>
               <Download size={17} />Export ledger
             </button>
-            <button className="primary-button" onClick={() => setIsModalOpen(true)}>
+            <button className="primary-button" onClick={openCreateModal}>
               <Plus size={17} />Record fee / payment
             </button>
           </div>
@@ -141,15 +187,33 @@ export default function FinancesPage() {
                 <td>₹{(payment.amount_due - payment.amount_paid).toLocaleString("en-IN")}</td>
                 <td><span className={`status-chip ${payment.payment_status}`}>{payment.payment_status}</span></td>
                 <td>
-                  <button
-                    className="table-action"
-                    data-testid={`send-reminder-${payment.id}`}
-                    onClick={() => queue(payment.id)}
-                    disabled={!payment.client?.whatsapp_opt_in}
-                    title={!payment.client?.whatsapp_opt_in ? "WhatsApp reminders are disabled for this client" : "Queue a WhatsApp reminder"}
-                  >
-                    <MessageCircle size={16} />Remind
-                  </button>
+                  <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                    <button
+                      className="table-action"
+                      data-testid={`send-reminder-${payment.id}`}
+                      onClick={() => queue(payment.id)}
+                      disabled={!payment.client?.whatsapp_opt_in}
+                      title={!payment.client?.whatsapp_opt_in ? "WhatsApp reminders are disabled for this client" : "Queue a WhatsApp reminder"}
+                    >
+                      <MessageCircle size={15} />Remind
+                    </button>
+                    <button
+                      type="button"
+                      className="table-action"
+                      style={{ padding: "4px 7px", fontSize: "11px" }}
+                      onClick={() => openEditModal(payment)}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="table-action"
+                      style={{ padding: "4px 7px", fontSize: "11px", color: "#ac4932" }}
+                      onClick={() => handleDeletePayment(payment.id)}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -165,23 +229,25 @@ export default function FinancesPage() {
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title="Record Payment / Fee"
-        subtitle="Log a due fee or payment record for a client."
+        title={editingPayment ? "Edit Payment Record" : "Record Payment / Fee"}
+        subtitle="Log or modify a fee or payment record for a client."
       >
-        <form onSubmit={handleCreatePayment} className="modal-form">
-          <div className="modal-field">
-            <label>Select Client *</label>
-            <select
-              value={paymentForm.clientId}
-              onChange={(e) => setPaymentForm({ ...paymentForm, clientId: e.target.value })}
-              required
-            >
-              <option value="">-- Choose Client --</option>
-              {clients.map((client) => (
-                <option key={client.id} value={client.id}>{client.full_name} ({client.phone_number})</option>
-              ))}
-            </select>
-          </div>
+        <form onSubmit={handleSavePayment} className="modal-form">
+          {!editingPayment && (
+            <div className="modal-field">
+              <label>Select Client *</label>
+              <select
+                value={paymentForm.clientId}
+                onChange={(e) => setPaymentForm({ ...paymentForm, clientId: e.target.value })}
+                required
+              >
+                <option value="">-- Choose Client --</option>
+                {clients.map((client) => (
+                  <option key={client.id} value={client.id}>{client.full_name} ({client.phone_number})</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
             <div className="modal-field">
@@ -241,7 +307,7 @@ export default function FinancesPage() {
           <div className="modal-actions">
             <button type="button" className="secondary-button" onClick={() => setIsModalOpen(false)}>Cancel</button>
             <button type="submit" className="primary-button" disabled={busy}>
-              {busy ? "Saving..." : "Save Record"}
+              {busy ? "Saving..." : (editingPayment ? "Update Record" : "Save Record")}
             </button>
           </div>
         </form>

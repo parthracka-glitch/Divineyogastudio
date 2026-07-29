@@ -77,6 +77,15 @@ async def update_payment(payment_id: str, input: PaymentUpdate, request: Request
     return await db.payments.find_one({"id": payment_id}, {"_id": 0})
 
 
+@router.delete("/payments/{payment_id}")
+async def delete_payment(payment_id: str, request: Request, admin: dict = Depends(current_admin)):
+    result = await db.payments.update_one({"id": payment_id}, {"$set": {"is_void": True, "updated_at": now_iso()}})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Payment record not found")
+    await audit("payment_deleted", request, admin["id"], {"payment_id": payment_id})
+    return {"ok": True}
+
+
 @router.get("/payments/export")
 async def export_payments():
     payments = await list_payments()
