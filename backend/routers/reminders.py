@@ -1,5 +1,3 @@
-import hashlib
-import hmac
 import os
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -61,14 +59,13 @@ async def send_batch(input: ReminderSendInput, request: Request, admin: dict = D
 
 @router.post("/webhooks/wati")
 async def wati_webhook(request: Request):
-    body = await request.body()
-    supplied = request.headers.get("x-wati-signature", "")
-    secret = os.environ.get("WATI_WEBHOOK_SECRET")
-    if not secret or not hmac.compare_digest(supplied, hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()):
-        raise HTTPException(status_code=401, detail="Webhook signature is invalid")
+    expected_key = os.environ.get("WATI_WEBHOOK_API_KEY", "")
+    authorization = request.headers.get("authorization", "")
+    if not expected_key or authorization != f"Bearer {expected_key}":
+        raise HTTPException(status_code=401, detail="Webhook authorization is invalid")
     payload = await request.json()
-    message_id = payload.get("messageId") or payload.get("id")
-    delivery_status = str(payload.get("status", "sent")).lower()
+    message_id = payload.get("localMessageId") or payload.get("messageId") or payload.get("id")
+    delivery_status = str(payload.get("statusString") or payload.get("status") or "sent").lower()
     if message_id:
-        await db.reminder_logs.update_one({"wati_message_id": message_id}, {"$set": {"delivery_status": delivery_status, "webhook_updated_at": now_iso()}})
+        await db.reminder_logs.update_one({"wati_message_id": message_id}, {"$set": {"delivery_status": delivery_status, "wati_event_type": payload.get("eventType"), "wati_whatsapp_message_id": payload.get("whatsappMessageId"), "webhook_updated_at": now_iso()}})
     return {"ok": True}

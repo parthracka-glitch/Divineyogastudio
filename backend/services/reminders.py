@@ -3,6 +3,7 @@ from datetime import date
 from core.database import db
 from core.security import now_iso, safe_template_value
 from services.seed import record_id
+from services.wati_service import WatiConfigurationError, configured, local_message_id, send_template_message
 
 
 def rendered_message(template: str, client: dict, payment: dict) -> str:
@@ -16,6 +17,16 @@ def rendered_message(template: str, client: dict, payment: dict) -> str:
     return template.format(**values)
 
 
+def template_parameters(client: dict, payment: dict) -> dict[str, str]:
+    return {
+        "name": safe_template_value(client["full_name"]),
+        "amount": safe_template_value(f"{payment['amount_due'] - payment['amount_paid']:,.0f}"),
+        "due_date": safe_template_value(payment["due_date"]),
+        "month": safe_template_value(payment["due_date"][:7]),
+        "studio_name": "Divine Yoga Studio",
+    }
+
+
 async def queue_reminder(payment: dict, template: dict | None, triggered_by: str) -> dict:
     client = await db.clients.find_one({"id": payment["client_id"]}, {"_id": 0})
     if not client or not client.get("whatsapp_opt_in", False):
@@ -26,10 +37,23 @@ async def queue_reminder(payment: dict, template: dict | None, triggered_by: str
     if existing and triggered_by == "auto":
         return {"payment_id": payment["id"], "status": "skipped", "reason": "Already queued today"}
     message = rendered_message(template["message_body"], client, payment) if template else "Payment reminder from Divine Yoga Studio"
-    log = {"id": record_id(), "client_id": client["id"], "payment_id": payment["id"], "template_id": template_id, "channel": "whatsapp", "sent_at": now_iso(), "sent_date": today, "delivery_status": "queued", "wati_message_id": None, "triggered_by": triggered_by, "error_message": None, "message_preview": message}
+    parameters = template_parameters(client, payment)
+    log = {"id": record_id(), "client_id": client["id"], "payment_id": payment["id"], "template_id": template_id, "channel": "whatsapp", "sent_at": now_iso(), "sent_date": today, "delivery_status": "queued", "wati_message_id": None, "triggered_by": triggered_by, "error_message": None, "message_preview": message, "template_parameters": parameters}
     await db.reminder_logs.insert_one(log)
+    approved_template = __import__("os").environ.get("WATI_PAYMENT_TEMPLATE_NAME", "")
+    if configured() and approved_template:
+        try:
+            response = await send_template_message(client["phone_number"], approved_template, parameters)
+            message_id = local_message_id(response)
+            await db.reminder_logs.update_one({"id": log["id"]}, {"$set": {"delivery_status": "sent", "wati_message_id": message_id, "wati_template_name": approved_template, "wati_sent_at": now_iso()}})
+            log["delivery_status"] = "sent"
+            log["wati_message_id"] = message_id
+        except (WatiConfigurationError, Exception) as exc:
+            await db.reminder_logs.update_one({"id": log["id"]}, {"$set": {"delivery_status": "failed", "error_message": "WATI delivery failed. Check the connection and approved template."}})
+            log["delivery_status"] = "failed"
+            log["error_message"] = str(exc)[:500]
     log.pop("_id", None)
-    return {"payment_id": payment["id"], "status": "queued", "log_id": log["id"]}
+    return {"payment_id": payment["id"], "status": log["delivery_status"], "log_id": log["id"]}
 
 
 async def run_daily_reminders() -> int:

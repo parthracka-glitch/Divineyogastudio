@@ -29,6 +29,11 @@ Build a private, single-admin finance and CRM dashboard for Divine Yoga Studio, 
 - Reminder template management, batch/manual queue endpoints, delivery logs, WATI webhook signature gate, and daily reminder scheduler.
 - Security middleware, rate limiting, audit records, encrypted medical notes, and protected admin routes.
 
+### 2026-07-29 — WATI delivery readiness
+- Added a guarded WATI template-message client that only allows HTTPS requests to the configured tenant host.
+- Reminder logs now retain approved-template parameters and update with a WATI local message ID when delivery is configured.
+- Webhook handling now validates WATI Bearer authentication before applying delivery/read status events.
+
 ## Prioritized backlog
 
 ### P0

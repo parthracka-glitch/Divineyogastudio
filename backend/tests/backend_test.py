@@ -129,6 +129,47 @@ def test_send_manual_reminder_queues(authed_session):
     assert any(l.get("payment_id") == payment_id or l.get("client_id") == open_p[0]["client_id"] for l in logs)
 
 
+# WATI safe-fallback tests: when WATI env vars are blank, manual reminder must remain "queued"
+# and no external delivery should be attempted.
+def test_manual_reminder_stays_queued_when_wati_unconfigured(authed_session):
+    payments = authed_session.get(f"{API}/admin/payments").json()
+    overdue = [p for p in payments if p["payment_status"] == "overdue"]
+    target = overdue[0] if overdue else next((p for p in payments if p["payment_status"] in ("pending", "partial")), None)
+    if not target:
+        pytest.skip("No open payments to remind")
+    r = authed_session.post(f"{API}/admin/reminders/send-manual", json={"payment_ids": [target["id"]]})
+    assert r.status_code == 200
+    results = r.json()["results"]
+    assert len(results) >= 1
+    result = results[0]
+    # Client must be whatsapp_opt_in or the reminder is legitimately skipped.
+    assert result["status"] in ("queued", "skipped"), f"Unexpected status {result['status']}"
+    if result["status"] == "queued":
+        # verify persisted with delivery_status queued (not sent/failed since WATI is blank)
+        logs = authed_session.get(f"{API}/admin/reminders/logs").json()
+        log = next((l for l in logs if l.get("id") == result.get("log_id")), None)
+        assert log is not None, "Reminder log not found via GET /admin/reminders/logs"
+        assert log["delivery_status"] == "queued", f"Expected queued, got {log['delivery_status']}"
+        assert log.get("wati_message_id") in (None, ""), "No WATI message id must be set when unconfigured"
+        assert log.get("channel") == "whatsapp"
+        assert "message_preview" in log and log["message_preview"]
+
+
+# WATI webhook must reject unauthenticated calls
+def test_wati_webhook_without_auth_returns_401():
+    r = requests.post(f"{API}/webhooks/wati", json={"messageId": "abc", "statusString": "delivered"})
+    assert r.status_code == 401
+
+
+def test_wati_webhook_with_wrong_bearer_returns_401():
+    r = requests.post(
+        f"{API}/webhooks/wati",
+        json={"messageId": "abc"},
+        headers={"Authorization": "Bearer not-the-real-key"},
+    )
+    assert r.status_code == 401
+
+
 def test_logout(authed_session):
     r = authed_session.post(f"{API}/auth/logout")
     assert r.status_code == 200

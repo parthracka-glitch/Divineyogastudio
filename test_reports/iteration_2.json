@@ -1,0 +1,24 @@
+{
+  "summary": "Focused testing of the safe WATI fallback wiring. Backend pytest: 18/18 passing including 3 new WATI tests — manual reminder stays 'queued' when WATI env vars are blank (no external send attempted), reminder log is persisted with delivery_status='queued' and wati_message_id=null, /api/v1/webhooks/wati returns 401 for missing Authorization and 401 for wrong bearer (because WATI_WEBHOOK_API_KEY is blank, no bearer can be valid). Frontend: owner login → Reminders page loads templates(2) and 6 queued log rows via async fetch; all status chips show 'queued', none 'sent' or 'failed'. Dashboard, Clients, and Finances tabs continue to load without errors. No page errors, no runtime console errors (only pre-login /auth/me 401 probes are expected).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "services/reminders.py catches `(WatiConfigurationError, Exception)` — the tuple is redundant since Exception already covers it, and catching bare Exception hides programming errors (KeyError, TypeError). Prefer catching (WatiConfigurationError, httpx.HTTPError) so unexpected bugs surface loudly.",
+    "services/reminders.py stores the raw `str(exc)[:500]` in log.error_message even though a friendly message was already persisted to the DB — the returned dict leaks internal exception text to the API caller. Return the friendly copy instead.",
+    "routers/reminders.py webhook: because WATI_WEBHOOK_API_KEY is blank, the endpoint currently accepts no caller (good, safe default). Consider returning 503 instead of 401 when the key is unset so operators can distinguish 'not configured yet' from 'wrong key'.",
+    "services/wati_service.py uses `__import__('os').environ.get(...)` from reminders.py — replace with a top-level `import os` for readability.",
+    "wati_service.configured() does not check WATI_PAYMENT_TEMPLATE_NAME even though reminders.py separately gates on it. Fold the template-name check into configured() so there is one source of truth for 'safe to deliver'."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py"],
+  "success_rate": {"backend": "100% (18/18)", "frontend": "100%"},
+  "test_credentials": "admin@divineyogastudio.in / yamx1yNHKwKNeKrw7s9LqjAM (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None — used seeded overdue payments. Manual reminder API queued additional rows visible on Reminders page (6 queued total).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "WATI env vars in /app/backend/.env are intentionally blank so services.wati_service.configured() returns False and services.reminders.queue_reminder skips the outbound send, leaving delivery_status='queued'. The webhook at /api/v1/webhooks/wati rejects everything (401) until WATI_WEBHOOK_API_KEY is populated. Post-login the app lands on '/' not '/dashboard' — do NOT wait_for_url('**/dashboard**'); wait for the sidebar data-testid='nav-reminders' instead. Reminders page fetches templates+logs asynchronously; wait for the /admin/reminders/logs response before assertions."
+}
