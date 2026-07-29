@@ -1,0 +1,116 @@
+{
+  "project_name": "Divine Yoga Studio - Finance/CRM Dashboard",
+  "theme": "Organic & Earthy mixed with High-Density Swiss Layout. Defaults to Light theme, dark mode available via toggle.",
+  "typography": {
+    "heading_font": "Outfit",
+    "body_font": "IBM Plex Sans",
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl font-semibold tracking-tight",
+      "h2": "text-2xl sm:text-3xl font-medium tracking-tight",
+      "h3": "text-xl sm:text-2xl font-medium",
+      "body": "text-base leading-relaxed",
+      "labels": "text-xs font-semibold tracking-[0.2em] uppercase"
+    },
+    "instructions": "Import Outfit and IBM Plex Sans from Google Fonts. NEVER use Inter, Roboto, or generic sans for headings. Use IBM Plex Sans for tables and finance data for tabular figure alignment."
+  },
+  "colors": {
+    "archetype": "Organic & Earthy",
+    "light": {
+      "background": "#F9F9F7",
+      "surface": "#FFFFFF",
+      "primary": "#4A5D23",
+      "primary_foreground": "#FFFFFF",
+      "secondary": "#EAE8E3",
+      "secondary_foreground": "#1C1C1A",
+      "muted": "#F3F2EE",
+      "muted_foreground": "#6B6A65",
+      "border": "#E2DFD8",
+      "text": "#1C1C1A",
+      "finance_overdue": "#E07A5F",
+      "finance_pending": "#DDA15E",
+      "finance_paid": "#606C38"
+    },
+    "dark": {
+      "background": "#181816",
+      "surface": "#1E1E1C",
+      "primary": "#A3B18A",
+      "primary_foreground": "#181816",
+      "secondary": "#2A2A28",
+      "secondary_foreground": "#F9F9F7",
+      "muted": "#242422",
+      "muted_foreground": "#A1A09A",
+      "border": "#333330",
+      "text": "#F9F9F7",
+      "finance_overdue": "#E07A5F",
+      "finance_pending": "#DDA15E",
+      "finance_paid": "#A3B18A"
+    },
+    "rules": [
+      "No generic full-screen gradients. Use solid colors with high contrast.",
+      "Never use pure black #000000 or pure white #FFFFFF for backgrounds in dark mode.",
+      "Teal green/teal blue (#1B93A4) are FORBIDDEN.",
+      "Explicitly set hover states for text color (e.g., hover:bg-muted hover:text-foreground)."
+    ]
+  },
+  "grids_and_layouts": {
+    "dashboard_grid": "grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6",
+    "spacing": "Generous spacing. Use p-6 or p-8 for cards. Use tight gaps (gap-4 or gap-6) between cards to maintain dashboard density.",
+    "alignment": "Left-align dense content and tables. Mobile-first grids always start with grid-cols-1.",
+    "navigation": "Left sidebar navigation containing: Dashboard, Clients, Batches, Finances, Reminders, Settings. Must have a solid background (bg-surface) and 1px right border."
+  },
+  "components": {
+    "cards": "Subtle roundness (max 8px, rounded-md or rounded-lg). Flat background, 1px subtle border (border-border), NO heavy shadows.",
+    "tables": "Use structured tables for CRM entities (Clients, Batches, Ledger, Reminders). Minimal chrome, 1px borders.",
+    "buttons": "Pill-shaped or slightly rounded (rounded-md). Always include interaction animations (active:scale-[0.98]).",
+    "forms": "Left-aligned labels, solid input borders, focus states with primary ring.",
+    "modals_dialogs": "Use Shadcn Dialogs. Must have solid or highly blurred background (e.g., backdrop-blur-xl bg-black/60). NO pure transparent overlays."
+  },
+  "visual_enhancers": {
+    "borders": "Expose the skeleton with 1px border-border/60. Use Grid Borders for data-heavy sections.",
+    "surfaces": "Neumorphic or flat solid. Glassmorphism only for sticky headers (if any) and modal overlays.",
+    "icons": "Use lucide-react exclusively."
+  },
+  "motion": {
+    "transitions": "Use specific properties (e.g., transition-colors, transition-transform) not 'transition-all'.",
+    "hover_states": "Cards slightly lift (-translate-y-1) with subtle shadow. Table rows highlight on hover (hover:bg-muted/50).",
+    "stagger": "List items and table rows should fade in staggered on load."
+  },
+  "accessibility": {
+    "contrast": "Ensure minimum 4.5:1 ratio for normal text.",
+    "testing": "All interactive and key informational elements MUST include a `data-testid` attribute (e.g., data-testid='client-submit-button').",
+    "focus": "Focus states must have higher contrast than default state."
+  },
+  "media": {
+    "image_urls": [
+      {
+        "url": "https://images.pexels.com/photos/4464468/pexels-photo-4464468.jpeg",
+        "category": "empty_state",
+        "description": "Minimalist zen stones, perfect for empty states in tables or the dashboard (e.g., 'No overdue payments')."
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1622547748225-3fc4abd2cca0?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODF8MHwxfHNlYXJjaHwxfHxtaW5pbWFsaXN0JTIwYWJzdHJhY3QlMjBhdmF0YXJ8ZW58MHx8fHwxNzg1MzE0MjA5fDA&ixlib=rb-4.1.0&q=85",
+        "category": "avatar",
+        "description": "Abstract minimalist avatar for the Admin user profile in the sidebar/header."
+      }
+    ]
+  },
+  "instructions_to_main_agent": [
+    "CRITICAL: The workspace uses .js/.jsx files. DO NOT generate .tsx or .ts files. Use PropTypes or JSDoc if type documentation is needed.",
+    "Build the dashboard using React + Tailwind + Shadcn UI primitives.",
+    "Implement a complete WhatsApp reminder workflow with 'queued', 'sent', and 'failed' tabs.",
+    "Use Lucide-react for all icons.",
+    "Do not center-align the app container. Align content to the left.",
+    "Do not use generic centered layouts or simplistic gradients.",
+    "Create depth using layered design elements and z-index hierarchy, but keep borders 1px and crisp.",
+    "Use 'sonner' for toasts.",
+    "Ensure the layout is a dense, high-performance CRM layout, not a sparse marketing page.",
+    "Implement the 'queued/logged' mode for WhatsApp safely."
+  ],
+  "general_ui_ux_guidelines": [
+    "You tend to converge toward generic outputs. Break the mold by applying strict 1px geometric borders, tight tracking on headings, and organic earthy colors.",
+    "Every interaction needs micro-animations (hover states, focus rings, active scaling).",
+    "Use generous padding inside components, but tight gaps between dashboard cards.",
+    "Never use generic AI emojis for icons. Use lucide-react exclusively.",
+    "Prioritize Progressive Disclosure: show only 5-9 most important elements on the default screen, push details to drill-downs or tabs."
+  ]
+}
