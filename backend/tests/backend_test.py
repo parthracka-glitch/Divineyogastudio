@@ -3,7 +3,7 @@ import os
 import pytest
 import requests
 
-BASE_URL = os.environ["REACT_APP_BACKEND_URL"].rstrip("/") if "REACT_APP_BACKEND_URL" in os.environ else "https://yoga-admin-crm.preview.emergentagent.com"
+BASE_URL = os.environ["REACT_APP_BACKEND_URL"].rstrip("/") if "REACT_APP_BACKEND_URL" in os.environ else "http://localhost:8000"
 API = f"{BASE_URL}/api/v1"
 ADMIN_EMAIL = "admin@divineyogastudio.in"
 ADMIN_PASSWORD = "yamx1yNHKwKNeKrw7s9LqjAM"

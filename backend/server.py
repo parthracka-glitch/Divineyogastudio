@@ -37,8 +37,18 @@ async def lifespan(_: FastAPI):
     client.close()
 
 
+raw_cors = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+cors_origins = [origin.strip() for origin in raw_cors.split(",") if origin.strip()]
+
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=os.environ["CORS_ORIGINS"].split(","), allow_credentials=True, allow_methods=["GET", "POST", "PATCH", "DELETE"], allow_headers=["Content-Type", "Authorization", "X-Wati-Signature"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.middleware("http")
@@ -65,6 +75,11 @@ async def security_and_rate_limit(request: Request, call_next):
 @app.exception_handler(Exception)
 async def unexpected_error(_: Request, __: Exception):
     return JSONResponse(status_code=500, content={"detail": "Something went wrong. Please try again."})
+
+
+@app.get("/")
+async def root():
+    return {"message": "Divine Yoga Studio API is running", "status": "ok"}
 
 
 @app.get("/health")

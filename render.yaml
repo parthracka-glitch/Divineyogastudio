@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: divineyoga-backend
+    env: python
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn backend.server:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: MONGO_URL
+        sync: false
+      - key: DB_NAME
+        value: divine_yoga
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FIELD_ENCRYPTION_SECRET
+        generateValue: true
+      - key: ADMIN_EMAIL
+        value: admin@divineyogastudio.in
+      - key: ADMIN_PASSWORD
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: http://localhost:3000

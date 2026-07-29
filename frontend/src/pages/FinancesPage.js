@@ -5,7 +5,7 @@ import { Download, MessageCircle, Search } from "../icons";
 
 export default function FinancesPage() {
   const [payments, setPayments] = useState([]); const [filter, setFilter] = useState("overdue"); const [notice, setNotice] = useState("");
-  const load = async () => { try { setPayments((await api.get("/api/v1/admin/payments", { params: filter ? { status: filter } : {} })).data); } catch (error) { setNotice(formatApiError(error)); } };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [filter]);
   const queue = async (paymentId) => { try { const result = await api.post("/api/v1/admin/reminders/send-manual", { payment_ids: [paymentId] }); setNotice(result.data.results[0].status === "queued" ? "Reminder safely queued." : result.data.results[0].reason); } catch (error) { setNotice(formatApiError(error)); } };
   const exportLedger = async () => { const response = await api.get("/api/v1/admin/payments/export", { responseType: "blob" }); const url = window.URL.createObjectURL(new Blob([response.data])); const link = document.createElement("a"); link.href = url; link.download = "divine-yoga-ledger.csv"; link.click(); window.URL.revokeObjectURL(url); };

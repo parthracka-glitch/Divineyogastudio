@@ -29,6 +29,10 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
+JWT_SECRET = os.environ.get("JWT_SECRET", "divine-yoga-default-secret-jwt-key")
+FIELD_ENCRYPTION_SECRET = os.environ.get("FIELD_ENCRYPTION_SECRET", "divine-yoga-default-field-secret")
+
+
 def token_for(user_id: str, email: str, token_type: str, minutes: int) -> str:
     payload = {
         "sub": user_id,
@@ -36,12 +40,12 @@ def token_for(user_id: str, email: str, token_type: str, minutes: int) -> str:
         "type": token_type,
         "exp": datetime.now(timezone.utc) + timedelta(minutes=minutes),
     }
-    return jwt.encode(payload, os.environ["JWT_SECRET"], algorithm=JWT_ALGORITHM)
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
 def decode_token(token: str, expected_type: str) -> dict:
     try:
-        payload = jwt.decode(token, os.environ["JWT_SECRET"], algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
     except jwt.PyJWTError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session is invalid or expired") from exc
     if payload.get("type") != expected_type:
@@ -54,7 +58,7 @@ def requester_ip(request: Request) -> str:
 
 
 def encryption_box() -> Fernet:
-    material = hashlib.sha256(os.environ["FIELD_ENCRYPTION_SECRET"].encode()).digest()
+    material = hashlib.sha256(FIELD_ENCRYPTION_SECRET.encode()).digest()
     return Fernet(base64.urlsafe_b64encode(material))
 
 
