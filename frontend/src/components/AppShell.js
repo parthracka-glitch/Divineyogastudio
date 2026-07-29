@@ -4,12 +4,12 @@ import { BellRing, CalendarDays, LayoutDashboard, Leaf, LogOut, Menu, MessageCir
 import { useAuth } from "./AuthProvider";
 
 const links = [
-  ["/", "Dashboard", LayoutDashboard],
-  ["/clients", "Clients", Users],
-  ["/batches", "Batches & plans", CalendarDays],
-  ["/finances", "Finances", WalletCards],
-  ["/reminders", "Reminders", MessageCircle],
-  ["/settings", "Settings", Settings],
+  ["/", "Dashboard", "nav-dashboard", LayoutDashboard],
+  ["/clients", "Clients", "nav-clients", Users],
+  ["/batches", "Batches & plans", "nav-batches-plans", CalendarDays],
+  ["/finances", "Finances", "nav-finances", WalletCards],
+  ["/reminders", "Reminders", "nav-reminders", MessageCircle],
+  ["/settings", "Settings", "nav-settings", Settings],
 ];
 
 export default function AppShell({ children }) {
@@ -25,7 +25,7 @@ export default function AppShell({ children }) {
     <aside className={`sidebar ${open ? "is-open" : ""}`} data-testid="primary-navigation">
       <div className="brand-mark" data-testid="studio-brand"><Leaf size={22} /><span>divine<span>yoga</span></span></div>
       <p className="sidebar-caption">Studio workspace</p>
-      <nav>{links.map(([path, label, Icon]) => <NavLink key={path} to={path} end={path === "/"} data-testid={`nav-${label.toLowerCase().replaceAll(" ", "-").replace("&-", "")}`} onClick={() => setOpen(false)}><Icon size={18} strokeWidth={1.8} /><span>{label}</span></NavLink>)}</nav>
+      <nav>{links.map(([path, label, testId, Icon]) => <NavLink key={path} to={path} end={path === "/"} data-testid={testId} onClick={() => setOpen(false)}><Icon size={18} strokeWidth={1.8} /><span>{label}</span></NavLink>)}</nav>
       <div className="side-foot"><div className="owner-avatar"><Leaf size={17} /></div><div><strong data-testid="admin-display-name">{user?.display_name || "Studio Admin"}</strong><small data-testid="admin-email">{user?.email}</small></div><button title="Sign out" aria-label="Sign out" data-testid="logout-button" onClick={leave}><LogOut size={17} /></button></div>
     </aside>
     <main className="main-panel">{children}</main>
