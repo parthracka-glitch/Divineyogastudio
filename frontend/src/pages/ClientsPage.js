@@ -6,6 +6,7 @@ import { Plus, Search } from "../icons";
 export default function ClientsPage() {
   const [clients, setClients] = useState([]);
   const [search, setSearch] = useState("");
+  const [notice, setNotice] = useState("");
   const load = async () => { try { setClients((await api.get("/api/v1/admin/clients", { params: { search } })).data); } catch (error) { setNotice(formatApiError(error)); } };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, []);
