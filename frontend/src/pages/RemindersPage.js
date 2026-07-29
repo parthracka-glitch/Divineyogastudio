@@ -9,6 +9,7 @@ export default function RemindersPage() {
   const [logs, setLogs] = useState([]);
   const [notice, setNotice] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -34,30 +35,65 @@ export default function RemindersPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, []);
 
-  const handleCreateTemplate = async (e) => {
+  const openCreateModal = () => {
+    setEditingTemplate(null);
+    setFormData({
+      name: "",
+      triggerType: "overdue",
+      offsetDays: "3",
+      messageBody: "Namaste {name}, your fee of ₹{amount} is due on {due_date}. Thank you.",
+    });
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (template) => {
+    setEditingTemplate(template);
+    setFormData({
+      name: template.name,
+      triggerType: template.trigger_type,
+      offsetDays: String(template.offset_days),
+      messageBody: template.message_body,
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleSaveTemplate = async (e) => {
     e.preventDefault();
     setBusy(true);
     try {
-      await api.post("/api/v1/admin/reminders/templates", {
+      const payload = {
         name: formData.name,
         trigger_type: formData.triggerType,
         offset_days: Number(formData.offsetDays),
         message_body: formData.messageBody,
         is_active: true,
-      });
-      setNotice("Template saved successfully.");
+      };
+
+      if (editingTemplate) {
+        await api.put(`/api/v1/admin/reminders/templates/${editingTemplate.id}`, payload);
+        setNotice("Template updated successfully.");
+      } else {
+        await api.post("/api/v1/admin/reminders/templates", payload);
+        setNotice("Template created successfully.");
+      }
+
       setIsModalOpen(false);
-      setFormData({
-        name: "",
-        triggerType: "overdue",
-        offsetDays: "3",
-        messageBody: "Namaste {name}, your fee of ₹{amount} is due on {due_date}. Thank you.",
-      });
       load();
     } catch (error) {
       setNotice(formatApiError(error));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const handleDeleteTemplate = async (templateId) => {
+    if (!window.confirm("Are you sure you want to delete this reminder template?")) return;
+    try {
+      await api.delete(`/api/v1/admin/reminders/templates/${templateId}`);
+      setNotice("Template deleted.");
+      load();
+    } catch (error) {
+      setNotice(formatApiError(error));
     }
   };
 
@@ -68,7 +104,7 @@ export default function RemindersPage() {
         title="Reminders"
         description="Messages are safely queued and logged until your WATI connection is added."
         action={
-          <button className="primary-button" data-testid="add-reminder-template-button" onClick={() => setIsModalOpen(true)}>
+          <button className="primary-button" data-testid="add-reminder-template-button" onClick={openCreateModal}>
             <Plus size={17} />New template
           </button>
         }
@@ -83,16 +119,38 @@ export default function RemindersPage() {
           <div className="template-stack">
             {templates.map((template) => (
               <article className="template-card" key={template.id} data-testid={`template-card-${template.id}`}>
-                <div>
-                  <span className="tag">{template.trigger_type?.replaceAll("_", " ")}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+                    <span className="tag">{template.trigger_type?.replaceAll("_", " ")}</span>
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <button
+                        type="button"
+                        className="table-action"
+                        style={{ padding: "4px 8px", fontSize: "11px" }}
+                        onClick={() => openEditModal(template)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="table-action"
+                        style={{ padding: "4px 8px", fontSize: "11px", color: "#ac4932" }}
+                        onClick={() => handleDeleteTemplate(template.id)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
                   <h3>{template.name}</h3>
                   <p>{template.message_body}</p>
                 </div>
-                <small>{template.offset_days} day{template.offset_days === 1 ? "" : "s"} offset</small>
+                <small style={{ marginTop: "8px" }}>{template.offset_days} day{template.offset_days === 1 ? "" : "s"} offset</small>
               </article>
             ))}
+            {!templates.length && <p className="empty-copy">No reminder templates created yet.</p>}
           </div>
         </section>
+
         <section className="queue-panel" data-testid="reminder-log-panel">
           <div className="section-heading">
             <CheckCircle2 size={19} />
@@ -111,7 +169,7 @@ export default function RemindersPage() {
             ))
           ) : (
             <div className="empty-log" data-testid="reminder-logs-empty-state">
-              <img src="https://images.pexels.com/photos/4464468/pexels-photo-4464468.jpeg" alt="Zen stones" />
+              <MessageCircle size={32} style={{ color: "var(--sage)", margin: "30px auto 10px", display: "block", opacity: 0.6 }} />
               <p>No messages have been queued yet.</p>
             </div>
           )}
@@ -121,10 +179,10 @@ export default function RemindersPage() {
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title="Create Reminder Template"
+        title={editingTemplate ? "Edit Reminder Template" : "Create Reminder Template"}
         subtitle="Configure automated WhatsApp reminder messages."
       >
-        <form onSubmit={handleCreateTemplate} className="modal-form">
+        <form onSubmit={handleSaveTemplate} className="modal-form">
           <div className="modal-field">
             <label>Template Name *</label>
             <input
@@ -175,7 +233,7 @@ export default function RemindersPage() {
           <div className="modal-actions">
             <button type="button" className="secondary-button" onClick={() => setIsModalOpen(false)}>Cancel</button>
             <button type="submit" className="primary-button" disabled={busy}>
-              {busy ? "Saving..." : "Save Template"}
+              {busy ? "Saving..." : (editingTemplate ? "Update Template" : "Save Template")}
             </button>
           </div>
         </form>

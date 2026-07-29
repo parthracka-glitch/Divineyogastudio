@@ -27,6 +27,26 @@ async def create_template(input: ReminderTemplateInput, request: Request, admin:
     return template
 
 
+@admin_router.put("/templates/{template_id}")
+async def update_template(template_id: str, input: ReminderTemplateInput, request: Request, admin: dict = Depends(current_admin)):
+    existing = await db.reminder_templates.find_one({"id": template_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Template not found")
+    updated_data = input.model_dump()
+    await db.reminder_templates.update_one({"id": template_id}, {"$set": updated_data})
+    await audit("reminder_template_updated", request, admin["id"], {"template_id": template_id})
+    return {"id": template_id} | updated_data
+
+
+@admin_router.delete("/templates/{template_id}")
+async def delete_template(template_id: str, request: Request, admin: dict = Depends(current_admin)):
+    result = await db.reminder_templates.delete_one({"id": template_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Template not found")
+    await audit("reminder_template_deleted", request, admin["id"], {"template_id": template_id})
+    return {"message": "Template deleted"}
+
+
 @admin_router.get("/logs")
 async def list_logs():
     logs = await db.reminder_logs.find({}, {"_id": 0}).sort("sent_at", -1).to_list(500)
