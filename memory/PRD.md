@@ -33,6 +33,7 @@ Build a private, single-admin finance and CRM dashboard for Divine Yoga Studio, 
 - Added a guarded WATI template-message client that only allows HTTPS requests to the configured tenant host.
 - Reminder logs now retain approved-template parameters and update with a WATI local message ID when delivery is configured.
 - Webhook handling now validates WATI Bearer authentication before applying delivery/read status events.
+- When WATI values are absent, reminders remain safely queued and the webhook rejects delivery updates until an operator configures the connection.
 
 ## Prioritized backlog
 

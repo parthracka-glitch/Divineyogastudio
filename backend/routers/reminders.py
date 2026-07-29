@@ -61,7 +61,9 @@ async def send_batch(input: ReminderSendInput, request: Request, admin: dict = D
 async def wati_webhook(request: Request):
     expected_key = os.environ.get("WATI_WEBHOOK_API_KEY", "")
     authorization = request.headers.get("authorization", "")
-    if not expected_key or authorization != f"Bearer {expected_key}":
+    if not expected_key:
+        raise HTTPException(status_code=503, detail="WATI webhook is not configured")
+    if authorization != f"Bearer {expected_key}":
         raise HTTPException(status_code=401, detail="Webhook authorization is invalid")
     payload = await request.json()
     message_id = payload.get("localMessageId") or payload.get("messageId") or payload.get("id")

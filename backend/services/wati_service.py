@@ -15,7 +15,12 @@ def normalize_phone(phone_number: str) -> str:
 def configured() -> bool:
     return all(
         os.environ.get(name)
-        for name in ["WATI_BASE_URL", "WATI_ALLOWED_HOST", "WATI_API_TOKEN"]
+        for name in [
+            "WATI_BASE_URL",
+            "WATI_ALLOWED_HOST",
+            "WATI_API_TOKEN",
+            "WATI_PAYMENT_TEMPLATE_NAME",
+        ]
     )
 
 

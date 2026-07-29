@@ -1,4 +1,7 @@
+import os
 from datetime import date
+
+import httpx
 
 from core.database import db
 from core.security import now_iso, safe_template_value
@@ -40,18 +43,18 @@ async def queue_reminder(payment: dict, template: dict | None, triggered_by: str
     parameters = template_parameters(client, payment)
     log = {"id": record_id(), "client_id": client["id"], "payment_id": payment["id"], "template_id": template_id, "channel": "whatsapp", "sent_at": now_iso(), "sent_date": today, "delivery_status": "queued", "wati_message_id": None, "triggered_by": triggered_by, "error_message": None, "message_preview": message, "template_parameters": parameters}
     await db.reminder_logs.insert_one(log)
-    approved_template = __import__("os").environ.get("WATI_PAYMENT_TEMPLATE_NAME", "")
-    if configured() and approved_template:
+    approved_template = os.environ.get("WATI_PAYMENT_TEMPLATE_NAME", "")
+    if configured():
         try:
             response = await send_template_message(client["phone_number"], approved_template, parameters)
             message_id = local_message_id(response)
             await db.reminder_logs.update_one({"id": log["id"]}, {"$set": {"delivery_status": "sent", "wati_message_id": message_id, "wati_template_name": approved_template, "wati_sent_at": now_iso()}})
             log["delivery_status"] = "sent"
             log["wati_message_id"] = message_id
-        except (WatiConfigurationError, Exception) as exc:
+        except (WatiConfigurationError, httpx.HTTPError):
             await db.reminder_logs.update_one({"id": log["id"]}, {"$set": {"delivery_status": "failed", "error_message": "WATI delivery failed. Check the connection and approved template."}})
             log["delivery_status"] = "failed"
-            log["error_message"] = str(exc)[:500]
+            log["error_message"] = "WATI delivery failed. Check the connection and approved template."
     log.pop("_id", None)
     return {"payment_id": payment["id"], "status": log["delivery_status"], "log_id": log["id"]}
 
