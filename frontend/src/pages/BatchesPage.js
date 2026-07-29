@@ -1,0 +1,12 @@
+import { useEffect, useState } from "react";
+import PageHeader from "../components/PageHeader";
+import api, { formatApiError } from "../lib/api";
+import { CalendarDays, Plus, WalletCards } from "../icons";
+
+export default function BatchesPage() {
+  const [batches, setBatches] = useState([]); const [plans, setPlans] = useState([]); const [notice, setNotice] = useState("");
+  const load = async () => { try { const [batchResponse, planResponse] = await Promise.all([api.get("/api/v1/admin/batches"), api.get("/api/v1/admin/plans")]); setBatches(batchResponse.data); setPlans(planResponse.data); } catch (error) { setNotice(formatApiError(error)); } };
+  useEffect(() => { load(); }, []);
+  const addPlan = async () => { const name = window.prompt("Plan name"); const amount = Number(window.prompt("Monthly price in rupees")); if (!name || !amount) return; try { await api.post("/api/v1/admin/plans", { name, amount, plan_type: "monthly", duration_days: 30, is_active: true }); setNotice("Plan created."); load(); } catch (error) { setNotice(formatApiError(error)); } };
+  return <section data-testid="batches-page"><PageHeader eyebrow="Studio operations" title="Batches & plans" description="Keep class schedules and pricing self-serviceable." action={<button className="primary-button" data-testid="add-plan-button" onClick={addPlan}><Plus size={17} />Add plan</button>} />{notice && <p className="inline-notice" data-testid="batches-notice">{notice}</p>}<div className="section-heading"><CalendarDays size={19} /><h2>Active batches</h2></div><div className="batch-grid">{batches.map((batch) => <article className="batch-card" key={batch.id} data-testid={`batch-card-${batch.id}`}><span className="tag">{batch.category_tag}</span><h3>{batch.name}</h3><p>{batch.instructor_name} · {batch.schedule_days.join(" · ")}</p><strong>{batch.start_time}—{batch.end_time}</strong><small>{batch.capacity} places · {batch.is_active ? "Active" : "Paused"}</small></article>)}</div><div className="section-heading plan-heading"><WalletCards size={19} /><h2>Membership plans</h2></div><div className="plan-list">{plans.map((plan) => <div className="plan-row" key={plan.id} data-testid={`plan-row-${plan.id}`}><div><strong>{plan.name}</strong><small>{plan.plan_type.replaceAll("_", " ")} · {plan.duration_days} days</small></div><b>₹{plan.amount.toLocaleString("en-IN")}</b><span className="status-chip active">Active</span></div>)}</div></section>;
+}

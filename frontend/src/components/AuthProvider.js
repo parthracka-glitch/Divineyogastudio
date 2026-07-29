@@ -1,0 +1,32 @@
+import { createContext, useContext, useEffect, useState } from "react";
+import api from "../lib/api";
+
+const AuthContext = createContext(null);
+
+export function AuthProvider({ children }) {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get("/api/v1/auth/me")
+      .then((response) => setUser(response.data))
+      .catch(() => setUser(false))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const value = {
+    user,
+    loading,
+    setUser,
+    logout: async () => {
+      await api.post("/api/v1/auth/logout");
+      setUser(false);
+    },
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+export function useAuth() {
+  return useContext(AuthContext);
+}
