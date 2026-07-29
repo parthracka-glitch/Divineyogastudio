@@ -9,7 +9,13 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     api.get("/api/v1/auth/me")
-      .then((response) => setUser(response.data))
+      .then((response) => {
+        if (response.data && typeof response.data === "object" && response.data.email) {
+          setUser(response.data);
+        } else {
+          setUser(false);
+        }
+      })
       .catch(() => setUser(false))
       .finally(() => setLoading(false));
   }, []);
