@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
@@ -11,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 ROOT_DIR = Path(__file__).parent
+sys.path.insert(0, str(ROOT_DIR))
 load_dotenv(ROOT_DIR / ".env")
 
 from core.database import client, create_indexes
@@ -28,12 +30,21 @@ scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    await create_indexes()
-    await seed_data()
-    scheduler.add_job(run_daily_reminders, "cron", hour=8, minute=0, id="daily-payment-reminders", replace_existing=True)
-    scheduler.start()
+    try:
+        await create_indexes()
+        await seed_data()
+    except Exception as err:
+        print(f"[Startup Warning] Database index/seed check: {err}")
+    try:
+        scheduler.add_job(run_daily_reminders, "cron", hour=8, minute=0, id="daily-payment-reminders", replace_existing=True)
+        scheduler.start()
+    except Exception as err:
+        print(f"[Startup Warning] Scheduler: {err}")
     yield
-    scheduler.shutdown(wait=False)
+    try:
+        scheduler.shutdown(wait=False)
+    except Exception:
+        pass
     client.close()
 
 
