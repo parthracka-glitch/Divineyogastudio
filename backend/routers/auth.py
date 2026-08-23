@@ -30,11 +30,18 @@ async def current_admin(request: Request) -> dict:
     return admin
 
 
-def set_session(response: Response, admin: dict) -> None:
-    is_secure = os.environ.get("SECURE_COOKIES", "false").lower() in ("true", "1")
+def set_session(response: Response, admin: dict, request: Request | None = None) -> None:
+    is_https = False
+    if request:
+        origin = request.headers.get("origin", "")
+        proto = request.headers.get("x-forwarded-proto", "")
+        is_https = proto == "https" or "vercel.app" in origin or "onrender.com" in origin
+    is_secure = os.environ.get("SECURE_COOKIES", "false").lower() in ("true", "1") or is_https or bool(os.environ.get("RENDER"))
     samesite = "none" if is_secure else "lax"
-    response.set_cookie("access_token", token_for(admin["id"], admin["email"], "access", 15), httponly=True, secure=is_secure, samesite=samesite, max_age=900, path="/")
-    response.set_cookie("refresh_token", token_for(admin["id"], admin["email"], "refresh", 10080), httponly=True, secure=is_secure, samesite=samesite, max_age=604800, path="/")
+    access_tok = token_for(admin["id"], admin["email"], "access", 15)
+    refresh_tok = token_for(admin["id"], admin["email"], "refresh", 10080)
+    response.set_cookie("access_token", access_tok, httponly=True, secure=is_secure, samesite=samesite, max_age=900, path="/")
+    response.set_cookie("refresh_token", refresh_tok, httponly=True, secure=is_secure, samesite=samesite, max_age=604800, path="/")
 
 
 @router.post("/login")
@@ -58,8 +65,14 @@ async def login(input: LoginInput, response: Response, request: Request):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email or password is incorrect")
     await db.admin_users.update_one({"id": admin["id"]}, {"$set": {"failed_login_attempts": 0, "locked_until": None, "last_login_at": now_iso(), "updated_at": now_iso()}})
     await audit("login_success", request, admin["id"])
-    set_session(response, admin)
-    return {"id": admin["id"], "email": admin["email"], "display_name": admin["display_name"]}
+    set_session(response, admin, request)
+    access_token = token_for(admin["id"], admin["email"], "access", 15)
+    return {
+        "id": admin["id"],
+        "email": admin["email"],
+        "display_name": admin["display_name"],
+        "access_token": access_token
+    }
 
 
 @router.get("/me")

@@ -25,7 +25,14 @@ export function AuthProvider({ children }) {
     loading,
     setUser,
     logout: async () => {
-      await api.post("/api/v1/auth/logout");
+      try {
+        await api.post("/api/v1/auth/logout");
+      } catch (_) {
+        // ignore network error on logout
+      }
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("access_token");
+      }
       setUser(false);
     },
   };

@@ -17,6 +17,9 @@ export default function LoginPage() {
     setError("");
     try {
       const response = await api.post("/api/v1/auth/login", { email, password });
+      if (response.data?.access_token && typeof window !== "undefined") {
+        localStorage.setItem("access_token", response.data.access_token);
+      }
       setUser(response.data);
       navigate("/");
     } catch (requestError) {
