@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import PageHeader from "../components/PageHeader";
 import Modal from "../components/Modal";
 import api, { formatApiError } from "../lib/api";
-import { CalendarDays, Plus, WalletCards } from "../icons";
+import { CalendarDays, Download, Plus, WalletCards } from "../icons";
+import { downloadBatchRosterPdf, downloadAllClientsPdf } from "../lib/pdfGenerator";
 
 export default function BatchesPage() {
   const [batches, setBatches] = useState([]);
   const [plans, setPlans] = useState([]);
+  const [clients, setClients] = useState([]);
   const [notice, setNotice] = useState("");
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
@@ -33,12 +35,14 @@ export default function BatchesPage() {
 
   const load = async () => {
     try {
-      const [batchResponse, planResponse] = await Promise.all([
+      const [batchResponse, planResponse, clientsResponse] = await Promise.all([
         api.get("/api/v1/admin/batches"),
         api.get("/api/v1/admin/plans"),
+        api.get("/api/v1/admin/clients").catch(() => ({ data: [] })),
       ]);
       setBatches(batchResponse.data);
       setPlans(planResponse.data);
+      setClients(clientsResponse.data);
     } catch (error) {
       setNotice(formatApiError(error));
     }
@@ -175,7 +179,15 @@ export default function BatchesPage() {
         title="Batches & plans"
         description="Keep class schedules and pricing self-serviceable."
         action={
-          <div style={{ display: "flex", gap: "10px" }}>
+          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+            <button
+              className="secondary-button"
+              data-testid="export-all-batches-pdf"
+              onClick={() => downloadAllClientsPdf(clients, batches)}
+              title="Download full client directory grouped across all batches"
+            >
+              <Download size={16} />Export All Batches PDF
+            </button>
             <button className="secondary-button" onClick={openCreateBatchModal}>
               <Plus size={17} />Add batch
             </button>
@@ -192,35 +204,62 @@ export default function BatchesPage() {
         <h2>Active batches</h2>
       </div>
       <div className="batch-grid">
-        {batches.map((batch) => (
-          <article className="batch-card" key={batch.id} data-testid={`batch-card-${batch.id}`}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span className="tag">{batch.category_tag}</span>
-              <div style={{ display: "flex", gap: "6px" }}>
-                <button
-                  type="button"
-                  className="table-action"
-                  style={{ padding: "3px 6px", fontSize: "10px" }}
-                  onClick={() => openEditBatchModal(batch)}
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  className="table-action"
-                  style={{ padding: "3px 6px", fontSize: "10px", color: "#ac4932" }}
-                  onClick={() => handleDeleteBatch(batch.id)}
-                >
-                  Delete
-                </button>
+        {batches.map((batch) => {
+          const batchClients = clients.filter(
+            (c) => c.batch_id === batch.id || c.batch_name === batch.name
+          );
+          return (
+            <article className="batch-card" key={batch.id} data-testid={`batch-card-${batch.id}`}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span className="tag">{batch.category_tag}</span>
+                <div style={{ display: "flex", gap: "6px" }}>
+                  <button
+                    type="button"
+                    className="table-action"
+                    style={{ padding: "3px 6px", fontSize: "10px" }}
+                    onClick={() => openEditBatchModal(batch)}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="table-action"
+                    style={{ padding: "3px 6px", fontSize: "10px", color: "#ac4932" }}
+                    onClick={() => handleDeleteBatch(batch.id)}
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
-            </div>
-            <h3>{batch.name}</h3>
-            <p>{batch.instructor_name} · {Array.isArray(batch.schedule_days) ? batch.schedule_days.join(" · ") : batch.schedule_days}</p>
-            <strong>{batch.start_time}—{batch.end_time}</strong>
-            <small>{batch.capacity} places · {batch.is_active ? "Active" : "Paused"}</small>
-          </article>
-        ))}
+              <h3>{batch.name}</h3>
+              <p>{batch.instructor_name} · {Array.isArray(batch.schedule_days) ? batch.schedule_days.join(" · ") : batch.schedule_days}</p>
+              <strong>{batch.start_time}—{batch.end_time}</strong>
+              <small style={{ color: "#4a5d23", fontWeight: "600", marginTop: "4px" }}>
+                {batchClients.length} / {batch.capacity} enrolled · {batch.is_active ? "Active" : "Paused"}
+              </small>
+              <button
+                type="button"
+                className="secondary-button"
+                data-testid={`download-batch-pdf-${batch.id}`}
+                style={{
+                  marginTop: "14px",
+                  width: "100%",
+                  padding: "8px 10px",
+                  fontSize: "12px",
+                  gap: "6px",
+                  display: "flex",
+                  justifyContent: "center",
+                  borderColor: "var(--sage)",
+                  color: "var(--sage)",
+                }}
+                onClick={() => downloadBatchRosterPdf(batch, batchClients)}
+                title={`Download ${batch.name} client attendance and roster PDF`}
+              >
+                <Download size={14} /> Download Batch PDF
+              </button>
+            </article>
+          );
+        })}
         {!batches.length && <p className="empty-copy">No batches registered yet.</p>}
       </div>
 

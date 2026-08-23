@@ -29,8 +29,16 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
+ENVIRONMENT = os.environ.get("ENVIRONMENT", "development").lower()
 JWT_SECRET = os.environ.get("JWT_SECRET", "divine-yoga-default-secret-jwt-key")
 FIELD_ENCRYPTION_SECRET = os.environ.get("FIELD_ENCRYPTION_SECRET", "divine-yoga-default-field-secret")
+
+if ENVIRONMENT == "production":
+    if JWT_SECRET == "divine-yoga-default-secret-jwt-key":
+        print("[SECURITY CRITICAL] JWT_SECRET is set to the default key in production! Set JWT_SECRET in environment variables.")
+    if FIELD_ENCRYPTION_SECRET == "divine-yoga-default-field-secret":
+        print("[SECURITY CRITICAL] FIELD_ENCRYPTION_SECRET is set to the default key in production! Set FIELD_ENCRYPTION_SECRET in environment variables.")
+
 
 
 def token_for(user_id: str, email: str, token_type: str, minutes: int) -> str:

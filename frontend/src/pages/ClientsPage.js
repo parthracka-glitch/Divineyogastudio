@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import PageHeader from "../components/PageHeader";
 import Modal from "../components/Modal";
 import api, { formatApiError } from "../lib/api";
-import { Plus, Search } from "../icons";
+import { Download, Plus, Search } from "../icons";
+import { downloadAllClientsPdf } from "../lib/pdfGenerator";
 
 export default function ClientsPage() {
   const [clients, setClients] = useState([]);
   const [batches, setBatches] = useState([]);
   const [search, setSearch] = useState("");
+  const [selectedBatchFilter, setSelectedBatchFilter] = useState("");
   const [notice, setNotice] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState(null);
@@ -105,6 +107,12 @@ export default function ClientsPage() {
     }
   };
 
+  const displayedClients = clients.filter((client) => {
+    if (!selectedBatchFilter) return true;
+    const selectedBatch = batches.find((b) => b.id === selectedBatchFilter);
+    return client.batch_id === selectedBatchFilter || (selectedBatch && client.batch_name === selectedBatch.name);
+  });
+
   return (
     <section data-testid="clients-page">
       <PageHeader
@@ -117,8 +125,8 @@ export default function ClientsPage() {
           </button>
         }
       />
-      <div className="toolbar">
-        <div className="search-box">
+      <div className="toolbar" style={{ flexWrap: "wrap", gap: "10px" }}>
+        <div className="search-box" style={{ maxWidth: "300px" }}>
           <Search size={17} />
           <input
             data-testid="client-search-input"
@@ -128,7 +136,39 @@ export default function ClientsPage() {
             onKeyDown={(event) => event.key === "Enter" && load()}
           />
         </div>
+        <select
+          data-testid="client-batch-filter"
+          value={selectedBatchFilter}
+          onChange={(e) => setSelectedBatchFilter(e.target.value)}
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--line)",
+            borderRadius: "6px",
+            padding: "0 12px",
+            height: "42px",
+            fontSize: "13px",
+            color: "var(--ink)",
+            outline: "none",
+            cursor: "pointer",
+          }}
+        >
+          <option value="">All Batches</option>
+          {batches.map((batch) => (
+            <option key={batch.id} value={batch.id}>
+              {batch.name}
+            </option>
+          ))}
+        </select>
         <button className="secondary-button" data-testid="client-search-button" onClick={load}>Search</button>
+        <button
+          className="secondary-button"
+          data-testid="download-clients-pdf-button"
+          onClick={() => downloadAllClientsPdf(clients, batches, selectedBatchFilter)}
+          title="Download PDF report of practitioners"
+          style={{ marginLeft: "auto" }}
+        >
+          <Download size={16} /> Export PDF
+        </button>
       </div>
       {notice && <p className="inline-notice" data-testid="client-notice">{notice}</p>}
       <div className="data-table-wrap">
@@ -144,36 +184,44 @@ export default function ClientsPage() {
             </tr>
           </thead>
           <tbody>
-            {clients.map((client) => (
-              <tr key={client.id} data-testid={`client-row-${client.id}`}>
-                <td><strong>{client.full_name}</strong><small>{client.email || "No email added"}</small></td>
-                <td>{client.phone_number}</td>
-                <td>{client.batch_id ? (batches.find(b => b.id === client.batch_id)?.name || "Assigned batch") : "Unassigned"}</td>
-                <td><span className={`status-chip ${client.status}`}>{client.status}</span></td>
-                <td>{client.whatsapp_opt_in ? "Enabled" : "Paused"}</td>
-                <td>
-                  <div style={{ display: "flex", gap: "6px" }}>
-                    <button
-                      type="button"
-                      className="table-action"
-                      style={{ padding: "4px 8px", fontSize: "11px" }}
-                      onClick={() => openEditModal(client)}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      className="table-action"
-                      style={{ padding: "4px 8px", fontSize: "11px", color: "#ac4932" }}
-                      onClick={() => handleDeleteClient(client.id)}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {!clients.length && (
+            {displayedClients.map((client) => {
+              let batchDisplayName = "Unassigned";
+              if (client.batch_id) {
+                batchDisplayName = batches.find((b) => b.id === client.batch_id)?.name || "Assigned batch";
+              } else if (client.batch_name) {
+                batchDisplayName = client.batch_name;
+              }
+              return (
+                <tr key={client.id} data-testid={`client-row-${client.id}`}>
+                  <td><strong>{client.full_name}</strong><small>{client.email || "No email added"}</small></td>
+                  <td>{client.phone_number}</td>
+                  <td>{batchDisplayName}</td>
+                  <td><span className={`status-chip ${client.status}`}>{client.status}</span></td>
+                  <td>{client.whatsapp_opt_in ? "Enabled" : "Paused"}</td>
+                  <td>
+                    <div style={{ display: "flex", gap: "6px" }}>
+                      <button
+                        type="button"
+                        className="table-action"
+                        style={{ padding: "4px 8px", fontSize: "11px" }}
+                        onClick={() => openEditModal(client)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="table-action"
+                        style={{ padding: "4px 8px", fontSize: "11px", color: "#ac4932" }}
+                        onClick={() => handleDeleteClient(client.id)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+            {!displayedClients.length && (
               <tr>
                 <td colSpan="6" className="empty-cell" data-testid="clients-empty-state">No clients match this view.</td>
               </tr>

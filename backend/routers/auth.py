@@ -1,6 +1,8 @@
+import os
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+
 
 from core.database import db
 from core.security import decode_token, hash_password, now_iso, requester_ip, token_for, verify_password
@@ -29,8 +31,10 @@ async def current_admin(request: Request) -> dict:
 
 
 def set_session(response: Response, admin: dict) -> None:
-    response.set_cookie("access_token", token_for(admin["id"], admin["email"], "access", 15), httponly=True, secure=True, samesite="none", max_age=900, path="/")
-    response.set_cookie("refresh_token", token_for(admin["id"], admin["email"], "refresh", 10080), httponly=True, secure=True, samesite="none", max_age=604800, path="/")
+    is_secure = os.environ.get("SECURE_COOKIES", "false").lower() in ("true", "1")
+    samesite = "none" if is_secure else "lax"
+    response.set_cookie("access_token", token_for(admin["id"], admin["email"], "access", 15), httponly=True, secure=is_secure, samesite=samesite, max_age=900, path="/")
+    response.set_cookie("refresh_token", token_for(admin["id"], admin["email"], "refresh", 10080), httponly=True, secure=is_secure, samesite=samesite, max_age=604800, path="/")
 
 
 @router.post("/login")
@@ -79,6 +83,8 @@ async def refresh(response: Response, request: Request):
 @router.post("/logout")
 async def logout(response: Response, request: Request, admin: dict = Depends(current_admin)):
     await audit("logout", request, admin["id"])
-    response.delete_cookie("access_token", path="/", secure=True, samesite="none")
-    response.delete_cookie("refresh_token", path="/", secure=True, samesite="none")
-    return {"ok": True}
+    is_secure = os.environ.get("SECURE_COOKIES", "false").lower() in ("true", "1")
+    samesite = "none" if is_secure else "lax"
+    response.delete_cookie("access_token", path="/", secure=is_secure, samesite=samesite)
+    response.delete_cookie("refresh_token", path="/", secure=is_secure, samesite=samesite)
+    return {"ok": True}

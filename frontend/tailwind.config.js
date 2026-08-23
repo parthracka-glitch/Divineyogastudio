@@ -7,6 +7,11 @@ module.exports = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        heading: ["Outfit", "sans-serif"],
+        body: ['"IBM Plex Sans"', "sans-serif"],
+        sans: ['"IBM Plex Sans"', "sans-serif"],
+      },
       borderRadius: {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
@@ -46,6 +51,9 @@ module.exports = {
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
         ring: 'hsl(var(--ring))',
+        paid: 'hsl(var(--paid, 75 32% 32%))',
+        pending: 'hsl(var(--pending, 32 64% 62%))',
+        overdue: 'hsl(var(--overdue, 13 67% 62%))',
         chart: {
           '1': 'hsl(var(--chart-1))',
           '2': 'hsl(var(--chart-2))',
@@ -54,6 +62,7 @@ module.exports = {
           '5': 'hsl(var(--chart-5))'
         }
       },
+
       keyframes: {
         'accordion-down': {
           from: {
