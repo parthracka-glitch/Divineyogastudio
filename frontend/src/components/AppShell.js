@@ -23,10 +23,28 @@ export default function AppShell({ children }) {
   return <div className="app-frame" data-testid="admin-app-shell">
     <button className="mobile-menu" data-testid="sidebar-menu-button" onClick={() => setOpen(!open)}>{open ? <X size={20} /> : <Menu size={20} />}</button>
     <aside className={`sidebar ${open ? "is-open" : ""}`} data-testid="primary-navigation">
-      <div className="brand-mark" data-testid="studio-brand"><Leaf size={22} /><span>divine<span>yoga</span></span></div>
+      <div className="brand-mark" data-testid="studio-brand">
+        <img
+          src="/logo.png"
+          alt="Divine Yoga Studio Logo"
+          style={{ width: "32px", height: "32px", objectFit: "contain", borderRadius: "6px", flexShrink: 0 }}
+        />
+        <span>divine<span>yoga</span></span>
+      </div>
       <p className="sidebar-caption">Studio workspace</p>
       <nav>{links.map(([path, label, testId, Icon]) => <NavLink key={path} to={path} end={path === "/"} data-testid={testId} onClick={() => setOpen(false)}><Icon size={18} strokeWidth={1.8} /><span>{label}</span></NavLink>)}</nav>
-      <div className="side-foot"><div className="owner-avatar"><Leaf size={17} /></div><div><strong data-testid="admin-display-name">{user?.display_name || "Studio Admin"}</strong><small data-testid="admin-email">{user?.email}</small></div><button title="Sign out" aria-label="Sign out" data-testid="logout-button" onClick={leave}><LogOut size={17} /></button></div>
+      <div className="side-foot">
+        <div className="owner-avatar" style={{ padding: "3px", overflow: "hidden" }}>
+          <img src="/logo.png" alt="Avatar" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+        </div>
+        <div>
+          <strong data-testid="admin-display-name">{user?.display_name || "Studio Admin"}</strong>
+          <small data-testid="admin-email">{user?.email}</small>
+        </div>
+        <button title="Sign out" aria-label="Sign out" data-testid="logout-button" onClick={leave}>
+          <LogOut size={17} />
+        </button>
+      </div>
     </aside>
     <main className="main-panel">{children}</main>
   </div>;
