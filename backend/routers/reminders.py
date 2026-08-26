@@ -1,10 +1,11 @@
 import os
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from core.database import db
 from core.security import now_iso
-from models.schemas import ReminderSendInput, ReminderTemplateInput
+from models.schemas import DirectReminderLogInput, ReminderSendInput, ReminderTemplateInput
 from routers.auth import audit, current_admin
 from services.reminders import queue_reminder, run_daily_reminders
 from services.seed import record_id
@@ -75,6 +76,32 @@ async def send_manual(input: ReminderSendInput, request: Request, admin: dict = 
 @admin_router.post("/send-batch")
 async def send_batch(input: ReminderSendInput, request: Request, admin: dict = Depends(current_admin)):
     return await send_manual(input, request, admin)
+
+
+@admin_router.post("/log-direct")
+async def log_direct(input: DirectReminderLogInput, request: Request, admin: dict = Depends(current_admin)):
+    today = str(date.today())
+    log_doc = {
+        "id": record_id(),
+        "client_id": input.client_id,
+        "payment_id": input.payment_id,
+        "template_name": input.template_name or "Direct WhatsApp Notice",
+        "channel": "whatsapp_direct",
+        "sent_at": now_iso(),
+        "sent_date": today,
+        "delivery_status": "sent",
+        "triggered_by": "manual_direct",
+        "message_preview": input.message_text[:300],
+        "phone_number": input.phone_number,
+    }
+    await db.reminder_logs.insert_one(log_doc)
+    await audit("reminder_direct_whatsapp_sent", request, admin["id"], {
+        "client_id": input.client_id,
+        "client_name": input.client_name,
+        "template_name": input.template_name,
+        "phone_number": input.phone_number,
+    })
+    return {"ok": True, "log_id": log_doc["id"]}
 
 
 @router.post("/webhooks/wati")

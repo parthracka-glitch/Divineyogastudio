@@ -20,6 +20,9 @@ export default function LoginPage() {
       if (response.data?.access_token && typeof window !== "undefined") {
         localStorage.setItem("access_token", response.data.access_token);
       }
+      if (response.data?.refresh_token && typeof window !== "undefined") {
+        localStorage.setItem("refresh_token", response.data.refresh_token);
+      }
       setUser(response.data);
       navigate("/");
     } catch (requestError) {

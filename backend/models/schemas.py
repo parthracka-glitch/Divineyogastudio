@@ -119,3 +119,12 @@ class ReminderTemplateInput(StrictModel):
 class ReminderSendInput(StrictModel):
     payment_ids: list[str] = Field(min_length=1, max_length=100)
     template_id: str | None = None
+
+
+class DirectReminderLogInput(StrictModel):
+    client_id: str
+    client_name: str | None = None
+    phone_number: str | None = None
+    template_name: str | None = None
+    message_text: str = Field(min_length=1, max_length=2000)
+    payment_id: str | None = None

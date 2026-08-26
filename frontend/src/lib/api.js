@@ -9,6 +9,20 @@ const api = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
+let isRefreshing = false;
+let failedQueue = [];
+
+const processQueue = (error, token = null) => {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+};
+
 api.interceptors.request.use(
   (config) => {
     if (typeof window !== "undefined") {
@@ -29,7 +43,74 @@ api.interceptors.response.use(
     }
     return response;
   },
-  (error) => Promise.reject(error)
+  async (error) => {
+    const originalRequest = error.config;
+    if (
+      error.response?.status === 401 &&
+      originalRequest &&
+      !originalRequest._retry &&
+      !originalRequest.url?.includes("/auth/login") &&
+      !originalRequest.url?.includes("/auth/refresh")
+    ) {
+      if (typeof window !== "undefined") {
+        const refreshToken = localStorage.getItem("refresh_token");
+        if (refreshToken) {
+          if (isRefreshing) {
+            return new Promise((resolve, reject) => {
+              failedQueue.push({ resolve, reject });
+            })
+              .then((token) => {
+                originalRequest.headers.Authorization = `Bearer ${token}`;
+                return api(originalRequest);
+              })
+              .catch((err) => Promise.reject(err));
+          }
+
+          originalRequest._retry = true;
+          isRefreshing = true;
+
+          try {
+            const refreshUrl = `${backendUrl || ""}/api/v1/auth/refresh`;
+            const refreshResponse = await axios.post(
+              refreshUrl,
+              { refresh_token: refreshToken },
+              {
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${refreshToken}`,
+                },
+                withCredentials: true,
+              }
+            );
+
+            const { access_token, refresh_token: newRefreshToken } = refreshResponse.data || {};
+            if (access_token) {
+              localStorage.setItem("access_token", access_token);
+              if (newRefreshToken) {
+                localStorage.setItem("refresh_token", newRefreshToken);
+              }
+              api.defaults.headers.common.Authorization = `Bearer ${access_token}`;
+              originalRequest.headers.Authorization = `Bearer ${access_token}`;
+              processQueue(null, access_token);
+              return api(originalRequest);
+            }
+          } catch (refreshErr) {
+            processQueue(refreshErr, null);
+            localStorage.removeItem("access_token");
+            localStorage.removeItem("refresh_token");
+            window.dispatchEvent(new CustomEvent("auth:session_expired"));
+            return Promise.reject(refreshErr);
+          } finally {
+            isRefreshing = false;
+          }
+        } else {
+          localStorage.removeItem("access_token");
+          window.dispatchEvent(new CustomEvent("auth:session_expired"));
+        }
+      }
+    }
+    return Promise.reject(error);
+  }
 );
 
 export function formatApiError(error) {
@@ -39,7 +120,12 @@ export function formatApiError(error) {
   }
 
   const detail = error.response?.data?.detail;
-  if (typeof detail === "string") return detail;
+  if (typeof detail === "string") {
+    if (detail.toLowerCase().includes("session is invalid") || detail.toLowerCase().includes("session is no longer valid") || detail.toLowerCase().includes("sign in is required")) {
+      return "Your session has expired. Please log in again to continue.";
+    }
+    return detail;
+  }
   if (Array.isArray(detail)) {
     return detail
       .map((item) => {

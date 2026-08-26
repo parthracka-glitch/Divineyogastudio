@@ -32,8 +32,46 @@ async def seed_data() -> None:
 
     if await db.reminder_templates.count_documents({}) == 0:
         await db.reminder_templates.insert_many([
-            {"id": record_id(), "name": "Gentle due reminder", "trigger_type": "before_due", "offset_days": 3, "message_body": "Namaste {name}, your {studio_name} fee of ₹{amount} is due on {due_date}. Thank you.", "is_active": True},
-            {"id": record_id(), "name": "Overdue follow-up", "trigger_type": "overdue", "offset_days": 3, "message_body": "Namaste {name}, a gentle reminder that ₹{amount} for {month} is overdue. Please reply if you need help.", "is_active": True},
+            {
+                "id": record_id(),
+                "name": "Advance Renewal Reminder",
+                "trigger_type": "before_due",
+                "offset_days": 3,
+                "message_body": "Namaste {name} 🙏\n\nThis is a gentle advance reminder that your *{plan}* for *{batch}* at {studio_name} is scheduled for renewal on *{due_date}*.\n\n📌 *Renewal Amount:* ₹{amount}\n🧘 *Validity:* Full access to scheduled studio sessions.\n\nTo continue your daily wellness practice without interruption, kindly complete your renewal via UPI or at the studio front desk.\n\nWarm regards,\n*Divine Yoga Studio* 🌿",
+                "is_active": True,
+            },
+            {
+                "id": record_id(),
+                "name": "Fee Due Today",
+                "trigger_type": "on_due",
+                "offset_days": 0,
+                "message_body": "Namaste {name} 🙏\n\nYour *{plan}* fee of *₹{amount}* is due today (*{due_date}*).\n\nKindly complete the fee payment today to keep your attendance active in your batch (*{batch}*).\n\nThank you for being a valued part of {studio_name}!\n\nWarm regards,\n*Divine Yoga Studio* 🌿",
+                "is_active": True,
+            },
+            {
+                "id": record_id(),
+                "name": "Overdue Payment Notice",
+                "trigger_type": "overdue",
+                "offset_days": 3,
+                "message_body": "Namaste {name} 🙏\n\nWe hope you are enjoying your yoga practice! 🌸\n\nThis is a friendly reminder that your *{plan}* fee of *₹{amount}* was due on *{due_date}* and is currently pending.\n\nPlease clear the dues at your earliest convenience via UPI or at the studio front desk. If you have already paid, please ignore this message.\n\nWarm regards,\n*Divine Yoga Studio* 🌿",
+                "is_active": True,
+            },
+            {
+                "id": record_id(),
+                "name": "Welcome & Registration Details",
+                "trigger_type": "before_due",
+                "offset_days": 0,
+                "message_body": "Namaste {name} 🙏\n\nWelcome to the *Divine Yoga Studio* family! 🕉️✨\n\nHere are your registered practice details:\n• *Batch:* {batch} ({batch_time})\n• *Plan:* {plan}\n• *Fee:* ₹{amount}\n• *Next Renewal:* {due_date}\n\nPlease bring your personal yoga mat and water bottle. We look forward to seeing you on the mat!\n\nWarm regards,\n*Divine Yoga Studio* 🌿",
+                "is_active": True,
+            },
+            {
+                "id": record_id(),
+                "name": "Batch Schedule & Timings",
+                "trigger_type": "before_due",
+                "offset_days": 0,
+                "message_body": "Namaste {name} 🙏\n\nThis is an update regarding your yoga session schedule:\n\n• *Batch:* {batch}\n• *Timings:* {batch_time}\n• *Studio:* {studio_name}\n\nKindly arrive 5-10 minutes prior to your session for breathing and preparation. See you on the mat!\n\nWarm regards,\n*Divine Yoga Studio* 🌿",
+                "is_active": True,
+            },
         ])
 
     OFFICIAL_BATCHES = [

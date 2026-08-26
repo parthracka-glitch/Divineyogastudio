@@ -3,7 +3,7 @@ import PageHeader from "../components/PageHeader";
 import Modal from "../components/Modal";
 import api, { formatApiError } from "../lib/api";
 import { CheckCircle2, MessageCircle, Plus, Sparkles } from "../icons";
-import { getWhatsAppDirectUrl } from "../lib/whatsappUtils";
+import WhatsAppReminderModal from "../components/WhatsAppReminderModal";
 
 const formatRupees = (value) => `₹${Number(value || 0).toLocaleString("en-IN")}`;
 
@@ -14,6 +14,8 @@ export default function RemindersPage() {
   const [notice, setNotice] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState(null);
+  const [whatsappPayment, setWhatsappPayment] = useState(null);
+  const [isWhatsappModalOpen, setIsWhatsappModalOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -166,10 +168,12 @@ export default function RemindersPage() {
                     </small>
                   </div>
 
-                  <a
-                    href={waUrl}
-                    target="_blank"
-                    rel="noreferrer"
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setWhatsappPayment(p);
+                      setIsWhatsappModalOpen(true);
+                    }}
                     className="secondary-button"
                     style={{
                       padding: "6px 11px",
@@ -181,12 +185,12 @@ export default function RemindersPage() {
                       display: "inline-flex",
                       alignItems: "center",
                       gap: "5px",
-                      textDecoration: "none",
+                      cursor: "pointer",
                     }}
-                    title={`Send WhatsApp message to ${p.client?.full_name}`}
+                    title={`Choose message template & send WhatsApp reminder to ${p.client?.full_name}`}
                   >
                     <MessageCircle size={14} /> Send WhatsApp
-                  </a>
+                  </button>
                 </div>
               );
             })}
@@ -330,6 +334,18 @@ export default function RemindersPage() {
           </div>
         </form>
       </Modal>
+
+      {/* Interactive WhatsApp Reminder & Message Selector Modal */}
+      <WhatsAppReminderModal
+        isOpen={isWhatsappModalOpen}
+        onClose={() => setIsWhatsappModalOpen(false)}
+        client={whatsappPayment?.client}
+        payment={whatsappPayment}
+        onSuccess={(msg) => {
+          setNotice(msg);
+          load();
+        }}
+      />
     </section>
   );
 }

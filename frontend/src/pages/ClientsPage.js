@@ -5,7 +5,7 @@ import api, { formatApiError } from "../lib/api";
 import { AlertCircle, Download, MessageCircle, Plus, Search, Sparkles, Users, WalletCards } from "../icons";
 import { downloadAllClientsPdf } from "../lib/pdfGenerator";
 import { formatBatchTimeRange, formatScheduleDays } from "../lib/batchUtils";
-import { getWhatsAppDirectUrl } from "../lib/whatsappUtils";
+import WhatsAppReminderModal from "../components/WhatsAppReminderModal";
 
 const formatRupees = (value) => `₹${Number(value || 0).toLocaleString("en-IN")}`;
 
@@ -19,6 +19,8 @@ export default function ClientsPage() {
   const [modalError, setModalError] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState(null);
+  const [whatsappClient, setWhatsappClient] = useState(null);
+  const [isWhatsappModalOpen, setIsWhatsappModalOpen] = useState(false);
 
   const [formData, setFormData] = useState({
     fullName: "",
@@ -363,10 +365,18 @@ export default function ClientsPage() {
                   </td>
                   <td>
                     {client.whatsapp_opt_in ? (
-                      <a
-                        href={whatsappUrl}
-                        target="_blank"
-                        rel="noreferrer"
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setWhatsappClient({
+                            ...client,
+                            batch_name: batchDisplayName,
+                            batch_time: batchTime,
+                            plan_name: planDisplayName,
+                            plan_amount: planAmount,
+                          });
+                          setIsWhatsappModalOpen(true);
+                        }}
                         className="secondary-button"
                         style={{
                           padding: "5px 9px",
@@ -378,12 +388,12 @@ export default function ClientsPage() {
                           fontWeight: "700",
                           display: "inline-flex",
                           alignItems: "center",
-                          textDecoration: "none",
+                          cursor: "pointer",
                         }}
-                        title={`Open WhatsApp chat with ${client.full_name}`}
+                        title={`Choose message template & send WhatsApp reminder to ${client.full_name}`}
                       >
                         <MessageCircle size={13} /> Chat / Reminder
-                      </a>
+                      </button>
                     ) : (
                       <small style={{ color: "var(--muted)", fontSize: "11px" }}>Opted out</small>
                     )}
@@ -637,6 +647,14 @@ export default function ClientsPage() {
           </div>
         </form>
       </Modal>
+
+      {/* Interactive WhatsApp Reminder & Message Selector Modal */}
+      <WhatsAppReminderModal
+        isOpen={isWhatsappModalOpen}
+        onClose={() => setIsWhatsappModalOpen(false)}
+        client={whatsappClient}
+        onSuccess={(msg) => setNotice(msg)}
+      />
     </section>
   );
 }

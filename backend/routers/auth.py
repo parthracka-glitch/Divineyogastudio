@@ -30,7 +30,11 @@ async def current_admin(request: Request) -> dict:
     return admin
 
 
-def set_session(response: Response, admin: dict, request: Request | None = None) -> None:
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "43200"))  # 30 days
+REFRESH_TOKEN_EXPIRE_MINUTES = int(os.environ.get("REFRESH_TOKEN_EXPIRE_MINUTES", "86400"))  # 60 days
+
+
+def set_session(response: Response, admin: dict, request: Request | None = None) -> tuple[str, str]:
     is_https = False
     if request:
         origin = request.headers.get("origin", "")
@@ -38,10 +42,11 @@ def set_session(response: Response, admin: dict, request: Request | None = None)
         is_https = proto == "https" or "vercel.app" in origin or "onrender.com" in origin
     is_secure = os.environ.get("SECURE_COOKIES", "false").lower() in ("true", "1") or is_https or bool(os.environ.get("RENDER"))
     samesite = "none" if is_secure else "lax"
-    access_tok = token_for(admin["id"], admin["email"], "access", 15)
-    refresh_tok = token_for(admin["id"], admin["email"], "refresh", 10080)
-    response.set_cookie("access_token", access_tok, httponly=True, secure=is_secure, samesite=samesite, max_age=900, path="/")
-    response.set_cookie("refresh_token", refresh_tok, httponly=True, secure=is_secure, samesite=samesite, max_age=604800, path="/")
+    access_tok = token_for(admin["id"], admin["email"], "access", ACCESS_TOKEN_EXPIRE_MINUTES)
+    refresh_tok = token_for(admin["id"], admin["email"], "refresh", REFRESH_TOKEN_EXPIRE_MINUTES)
+    response.set_cookie("access_token", access_tok, httponly=True, secure=is_secure, samesite=samesite, max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60, path="/")
+    response.set_cookie("refresh_token", refresh_tok, httponly=True, secure=is_secure, samesite=samesite, max_age=REFRESH_TOKEN_EXPIRE_MINUTES * 60, path="/")
+    return access_tok, refresh_tok
 
 
 @router.post("/login")
@@ -65,13 +70,13 @@ async def login(input: LoginInput, response: Response, request: Request):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email or password is incorrect")
     await db.admin_users.update_one({"id": admin["id"]}, {"$set": {"failed_login_attempts": 0, "locked_until": None, "last_login_at": now_iso(), "updated_at": now_iso()}})
     await audit("login_success", request, admin["id"])
-    set_session(response, admin, request)
-    access_token = token_for(admin["id"], admin["email"], "access", 15)
+    access_token, refresh_token = set_session(response, admin, request)
     return {
         "id": admin["id"],
         "email": admin["email"],
         "display_name": admin["display_name"],
-        "access_token": access_token
+        "access_token": access_token,
+        "refresh_token": refresh_token,
     }
 
 
@@ -84,13 +89,28 @@ async def me(admin: dict = Depends(current_admin)):
 async def refresh(response: Response, request: Request):
     token = request.cookies.get("refresh_token")
     if not token:
+        authorization = request.headers.get("authorization", "")
+        if authorization.startswith("Bearer "):
+            token = authorization.removeprefix("Bearer ")
+    if not token:
+        try:
+            body = await request.json()
+            if isinstance(body, dict):
+                token = body.get("refresh_token")
+        except Exception:
+            token = None
+    if not token:
         raise HTTPException(status_code=401, detail="Refresh session is missing")
     payload = decode_token(token, "refresh")
     admin = await db.admin_users.find_one({"id": payload["sub"]}, {"_id": 0})
     if not admin:
         raise HTTPException(status_code=401, detail="Session is no longer valid")
-    set_session(response, admin)
-    return {"ok": True}
+    access_token, refresh_token = set_session(response, admin, request)
+    return {
+        "ok": True,
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+    }
 
 
 @router.post("/logout")

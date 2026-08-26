@@ -3,7 +3,7 @@ import PageHeader from "../components/PageHeader";
 import Modal from "../components/Modal";
 import api, { formatApiError } from "../lib/api";
 import { AlertCircle, Download, MessageCircle, Plus } from "../icons";
-import { getWhatsAppDirectUrl } from "../lib/whatsappUtils";
+import WhatsAppReminderModal from "../components/WhatsAppReminderModal";
 
 export default function FinancesPage() {
   const [payments, setPayments] = useState([]);
@@ -13,6 +13,8 @@ export default function FinancesPage() {
   const [modalError, setModalError] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPayment, setEditingPayment] = useState(null);
+  const [whatsappPayment, setWhatsappPayment] = useState(null);
+  const [isWhatsappModalOpen, setIsWhatsappModalOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const [paymentForm, setPaymentForm] = useState({
@@ -208,35 +210,29 @@ export default function FinancesPage() {
                 <td>
                   <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
                     {payment.client?.whatsapp_opt_in && (
-                      <a
-                        href={getWhatsAppDirectUrl({
-                          phoneNumber: payment.client?.phone_number,
-                          clientName: payment.client?.full_name,
-                          planName: payment.plan_name || "Yoga Membership",
-                          batchName: payment.batch_name || "",
-                          amount: payment.amount_due - payment.amount_paid,
-                          dueDate: payment.due_date,
-                          reminderType: payment.payment_status === "overdue" ? "overdue" : "due_today",
-                        })}
-                        target="_blank"
-                        rel="noreferrer"
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setWhatsappPayment(payment);
+                          setIsWhatsappModalOpen(true);
+                        }}
                         className="table-action"
                         style={{
                           backgroundColor: "#f0f8ed",
                           borderColor: "#b6ddaa",
                           color: "#2e681c",
                           fontWeight: "700",
-                          textDecoration: "none",
                           display: "inline-flex",
                           alignItems: "center",
                           gap: "4px",
                           padding: "4px 8px",
                           fontSize: "11px",
+                          cursor: "pointer",
                         }}
-                        title={`Open WhatsApp chat to send reminder to ${payment.client?.full_name}`}
+                        title={`Select message template & send WhatsApp reminder to ${payment.client?.full_name}`}
                       >
                         <MessageCircle size={14} /> WhatsApp
-                      </a>
+                      </button>
                     )}
                     <button
                       className="table-action"
@@ -384,6 +380,15 @@ export default function FinancesPage() {
           </div>
         </form>
       </Modal>
+
+      {/* Interactive WhatsApp Reminder & Message Selector Modal */}
+      <WhatsAppReminderModal
+        isOpen={isWhatsappModalOpen}
+        onClose={() => setIsWhatsappModalOpen(false)}
+        client={whatsappPayment?.client}
+        payment={whatsappPayment}
+        onSuccess={(msg) => setNotice(msg)}
+      />
     </section>
   );
 }
