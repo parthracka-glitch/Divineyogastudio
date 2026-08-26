@@ -6,7 +6,7 @@ from core.database import db
 from core.security import now_iso
 from models.schemas import ReminderSendInput, ReminderTemplateInput
 from routers.auth import audit, current_admin
-from services.reminders import queue_reminder
+from services.reminders import queue_reminder, run_daily_reminders
 from services.seed import record_id
 
 
@@ -93,3 +93,22 @@ async def wati_webhook(request: Request):
     if message_id:
         await db.reminder_logs.update_one({"wati_message_id": message_id}, {"$set": {"delivery_status": delivery_status, "wati_event_type": payload.get("eventType"), "wati_whatsapp_message_id": payload.get("whatsappMessageId"), "webhook_updated_at": now_iso()}})
     return {"ok": True}
+
+
+@router.api_route("/cron/daily-reminders", methods=["GET", "POST"])
+@router.api_route("/cron/reminders", methods=["GET", "POST"])
+async def trigger_daily_reminders(request: Request):
+    cron_secret = os.environ.get("CRON_SECRET", "")
+    if cron_secret:
+        auth_header = request.headers.get("authorization", "")
+        token = auth_header.removeprefix("Bearer ").strip() if auth_header.startswith("Bearer ") else request.query_params.get("secret", "")
+        if token != cron_secret:
+            raise HTTPException(status_code=401, detail="Invalid or missing cron secret")
+
+    queued_count = await run_daily_reminders()
+    return {
+        "status": "success",
+        "message": "Daily payment reminders processed successfully",
+        "queued_count": queued_count,
+        "timestamp": now_iso(),
+    }
