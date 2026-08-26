@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Leaf } from "../icons";
 import { useAuth } from "../components/AuthProvider";
@@ -6,11 +6,17 @@ import api, { formatApiError } from "../lib/api";
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { setUser } = useAuth();
+  const { user, setUser } = useAuth();
   const [email, setEmail] = useState("admin@divineyogastudio.in");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      navigate("/", { replace: true });
+    }
+  }, [user, navigate]);
   const submit = async (event) => {
     event.preventDefault();
     setBusy(true);

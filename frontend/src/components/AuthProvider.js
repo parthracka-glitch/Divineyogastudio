@@ -16,7 +16,16 @@ export function AuthProvider({ children }) {
       window.addEventListener("auth:session_expired", handleSessionExpired);
     }
 
-    api.get("/api/v1/auth/me")
+    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+    const refreshToken = typeof window !== "undefined" ? localStorage.getItem("refresh_token") : null;
+
+    if (!token && !refreshToken) {
+      setUser(false);
+      setLoading(false);
+      return;
+    }
+
+    api.get("/api/v1/auth/me", { timeout: 8000 })
       .then((response) => {
         if (response.data && typeof response.data === "object" && response.data.email) {
           setUser(response.data);

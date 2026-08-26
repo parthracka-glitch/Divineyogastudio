@@ -53,7 +53,18 @@ class ErrorBoundary extends React.Component {
 
 function ProtectedPage({ children }) {
   const { user, loading } = useAuth();
-  if (loading) return <div className="app-loading" data-testid="app-loading-state">Opening your workspace…</div>;
+  if (loading) {
+    return (
+      <div className="app-loading" data-testid="app-loading-state" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", gap: "14px" }}>
+        <img
+          src="/logo.png"
+          alt="Divine Yoga"
+          style={{ width: "48px", height: "48px", objectFit: "contain", borderRadius: "10px" }}
+        />
+        <div style={{ fontSize: "16px", fontWeight: "600", color: "var(--sage)" }}>Opening your workspace…</div>
+      </div>
+    );
+  }
   if (!user) return <Navigate to="/login" replace />;
   return <AppShell>{children}</AppShell>;
 }
