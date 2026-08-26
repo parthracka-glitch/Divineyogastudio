@@ -625,15 +625,43 @@ export default function ClientsPage() {
                 padding: "10px 14px",
                 display: "flex",
                 alignItems: "center",
+                justifyContent: "space-between",
                 gap: "8px",
                 color: "#cf1322",
                 fontSize: "13px",
                 fontWeight: "500",
                 marginTop: "4px",
+                flexWrap: "wrap",
               }}
             >
-              <AlertCircle size={16} style={{ flexShrink: 0 }} />
-              <span>{modalError}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <AlertCircle size={16} style={{ flexShrink: 0 }} />
+                <span>{modalError}</span>
+              </div>
+              {(modalError.toLowerCase().includes("session") || modalError.toLowerCase().includes("sign in") || modalError.toLowerCase().includes("expired")) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (typeof window !== "undefined") {
+                      localStorage.removeItem("access_token");
+                      localStorage.removeItem("refresh_token");
+                      window.location.href = "/login";
+                    }
+                  }}
+                  style={{
+                    backgroundColor: "#cf1322",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "5px",
+                    padding: "5px 10px",
+                    fontSize: "12px",
+                    fontWeight: "700",
+                    cursor: "pointer",
+                  }}
+                >
+                  Sign In Again →
+                </button>
+              )}
             </div>
           )}
 

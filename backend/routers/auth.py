@@ -17,17 +17,32 @@ async def audit(action: str, request: Request, admin_id: str | None = None, meta
 
 
 async def current_admin(request: Request) -> dict:
-    token = request.cookies.get("access_token")
-    if not token:
-        authorization = request.headers.get("authorization", "")
-        token = authorization.removeprefix("Bearer ") if authorization.startswith("Bearer ") else None
-    if not token:
+    header_token = None
+    authorization = request.headers.get("authorization", "")
+    if authorization.startswith("Bearer "):
+        header_token = authorization.removeprefix("Bearer ").strip()
+
+    cookie_token = request.cookies.get("access_token")
+
+    candidates = [t for t in [header_token, cookie_token] if t]
+    if not candidates:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sign in is required")
-    payload = decode_token(token, "access")
-    admin = await db.admin_users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
-    if not admin:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session is no longer valid")
-    return admin
+
+    last_error = None
+    for token in candidates:
+        try:
+            payload = decode_token(token, "access")
+            admin = await db.admin_users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
+            if admin:
+                return admin
+        except HTTPException as exc:
+            last_error = exc
+        except Exception:
+            last_error = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session is invalid or expired")
+
+    if last_error:
+        raise last_error
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session is no longer valid")
 
 
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "43200"))  # 30 days
