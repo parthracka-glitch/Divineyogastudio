@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { formatBatchTimeRange, formatScheduleDays } from "./batchUtils";
 
 /**
  * Generate and download a high-quality PDF roster for a specific batch.
@@ -54,10 +55,8 @@ export function downloadBatchRosterPdf(batch, clients = []) {
   doc.setTextColor(...secondaryColor);
   doc.setFont("helvetica", "normal");
 
-  const scheduleDays = Array.isArray(batch.schedule_days)
-    ? batch.schedule_days.join(", ")
-    : (batch.schedule_days || "Mon - Fri");
-  const timings = `${batch.start_time || "07:00"} - ${batch.end_time || "08:00"}`;
+  const scheduleDays = formatScheduleDays(batch.schedule_days);
+  const timings = formatBatchTimeRange(batch.start_time, batch.end_time);
   const category = batch.category_tag || "Mat Yoga";
   const instructor = batch.instructor_name || "Assigned Instructor";
   const capacity = batch.capacity || 20;

@@ -6,12 +6,13 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).parent
 sys.path.insert(0, str(ROOT_DIR))
 
-from core.database import db, create_indexes
+from core.database import db, create_indexes, ensure_connection
 from services.seed import seed_data
 
 
 async def reset_database():
     print("Resetting database...")
+    await ensure_connection()
     collections = await db.list_collection_names()
     for name in collections:
         if not name.startswith("system."):

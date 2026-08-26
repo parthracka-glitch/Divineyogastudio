@@ -1,3 +1,4 @@
+import re
 from datetime import date
 from typing import Literal
 
@@ -43,16 +44,40 @@ class ClientInput(StrictModel):
     gender: str | None = Field(default=None, max_length=30)
     address: str | None = Field(default=None, max_length=300)
     batch_id: str | None = None
+    plan_id: str | None = None
     join_date: date
-    status: Literal["trial", "active", "paused", "expired", "cancelled"] = "trial"
+    status: Literal["trial", "active", "paused", "expired", "cancelled"] = "active"
+    initial_payment_status: Literal["paid", "pending", "partial"] | None = None
+    initial_amount_paid: float | None = None
+    payment_method: str | None = None
     emergency_contact: str | None = Field(default=None, max_length=80)
     medical_notes: str | None = Field(default=None, max_length=1000)
     referral_source: str | None = Field(default=None, max_length=80)
+    notes: str | None = Field(default=None, max_length=500)
 
-    @field_validator("phone_number")
+    @field_validator("phone_number", mode="before")
     @classmethod
     def clean_phone(cls, value: str) -> str:
-        return value.replace(" ", "")
+        if not isinstance(value, str):
+            return value
+        cleaned = re.sub(r"[\s\-\(\)\.]", "", value.strip())
+        if not cleaned:
+            return cleaned
+        if cleaned.startswith("0") and len(cleaned) == 11:
+            cleaned = "+91" + cleaned[1:]
+        elif len(cleaned) == 10 and not cleaned.startswith("+"):
+            cleaned = "+91" + cleaned
+        elif not cleaned.startswith("+") and cleaned.isdigit():
+            cleaned = "+" + cleaned
+        return cleaned
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def clean_email(cls, value: str | None) -> str | None:
+        if isinstance(value, str):
+            value = value.strip()
+            return value if value else None
+        return value
 
 
 class SubscriptionInput(StrictModel):

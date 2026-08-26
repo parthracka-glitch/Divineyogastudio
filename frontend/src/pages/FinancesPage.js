@@ -2,13 +2,15 @@ import { useEffect, useState } from "react";
 import PageHeader from "../components/PageHeader";
 import Modal from "../components/Modal";
 import api, { formatApiError } from "../lib/api";
-import { Download, MessageCircle, Plus } from "../icons";
+import { AlertCircle, Download, MessageCircle, Plus } from "../icons";
+import { getWhatsAppDirectUrl } from "../lib/whatsappUtils";
 
 export default function FinancesPage() {
   const [payments, setPayments] = useState([]);
   const [clients, setClients] = useState([]);
   const [filter, setFilter] = useState("overdue");
   const [notice, setNotice] = useState("");
+  const [modalError, setModalError] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPayment, setEditingPayment] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -40,8 +42,9 @@ export default function FinancesPage() {
 
   const openCreateModal = () => {
     setEditingPayment(null);
+    setModalError("");
     setPaymentForm({
-      clientId: "",
+      clientId: clients.length ? clients[0].id : "",
       amountDue: "",
       amountPaid: "0",
       dueDate: new Date().toISOString().slice(0, 10),
@@ -53,6 +56,7 @@ export default function FinancesPage() {
 
   const openEditModal = (payment) => {
     setEditingPayment(payment);
+    setModalError("");
     setPaymentForm({
       clientId: payment.client_id || "",
       amountDue: String(payment.amount_due || ""),
@@ -66,10 +70,23 @@ export default function FinancesPage() {
 
   const handleSavePayment = async (e) => {
     e.preventDefault();
+    setModalError("");
+
+    if (!paymentForm.clientId) {
+      setModalError("Please select a client.");
+      return;
+    }
+
+    const amountDue = Number(paymentForm.amountDue);
+    const amountPaid = Number(paymentForm.amountPaid || 0);
+
+    if (isNaN(amountDue) || amountDue <= 0) {
+      setModalError("Please enter a valid amount due (greater than ₹0).");
+      return;
+    }
+
     setBusy(true);
     try {
-      const amountDue = Number(paymentForm.amountDue);
-      const amountPaid = Number(paymentForm.amountPaid);
       const status = amountPaid >= amountDue ? "paid" : paymentForm.paymentStatus;
 
       if (editingPayment) {
@@ -96,7 +113,9 @@ export default function FinancesPage() {
       setIsModalOpen(false);
       load();
     } catch (error) {
-      setNotice(formatApiError(error));
+      const err = formatApiError(error);
+      setModalError(err);
+      setNotice(err);
     } finally {
       setBusy(false);
     }
@@ -187,15 +206,47 @@ export default function FinancesPage() {
                 <td>₹{(payment.amount_due - payment.amount_paid).toLocaleString("en-IN")}</td>
                 <td><span className={`status-chip ${payment.payment_status}`}>{payment.payment_status}</span></td>
                 <td>
-                  <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                  <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
+                    {payment.client?.whatsapp_opt_in && (
+                      <a
+                        href={getWhatsAppDirectUrl({
+                          phoneNumber: payment.client?.phone_number,
+                          clientName: payment.client?.full_name,
+                          planName: payment.plan_name || "Yoga Membership",
+                          batchName: payment.batch_name || "",
+                          amount: payment.amount_due - payment.amount_paid,
+                          dueDate: payment.due_date,
+                          reminderType: payment.payment_status === "overdue" ? "overdue" : "due_today",
+                        })}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="table-action"
+                        style={{
+                          backgroundColor: "#f0f8ed",
+                          borderColor: "#b6ddaa",
+                          color: "#2e681c",
+                          fontWeight: "700",
+                          textDecoration: "none",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
+                          padding: "4px 8px",
+                          fontSize: "11px",
+                        }}
+                        title={`Open WhatsApp chat to send reminder to ${payment.client?.full_name}`}
+                      >
+                        <MessageCircle size={14} /> WhatsApp
+                      </a>
+                    )}
                     <button
                       className="table-action"
                       data-testid={`send-reminder-${payment.id}`}
                       onClick={() => queue(payment.id)}
                       disabled={!payment.client?.whatsapp_opt_in}
-                      title={!payment.client?.whatsapp_opt_in ? "WhatsApp reminders are disabled for this client" : "Queue a WhatsApp reminder"}
+                      style={{ padding: "4px 8px", fontSize: "11px" }}
+                      title={!payment.client?.whatsapp_opt_in ? "WhatsApp reminders are disabled for this client" : "Queue automated system reminder"}
                     >
-                      <MessageCircle size={15} />Remind
+                      Queue
                     </button>
                     <button
                       type="button"
@@ -303,6 +354,27 @@ export default function FinancesPage() {
               onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })}
             />
           </div>
+
+          {modalError && (
+            <div
+              style={{
+                backgroundColor: "#fff1f0",
+                border: "1px solid #ffccc7",
+                borderRadius: "8px",
+                padding: "10px 14px",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                color: "#cf1322",
+                fontSize: "13px",
+                fontWeight: "500",
+                marginTop: "4px",
+              }}
+            >
+              <AlertCircle size={16} style={{ flexShrink: 0 }} />
+              <span>{modalError}</span>
+            </div>
+          )}
 
           <div className="modal-actions">
             <button type="button" className="secondary-button" onClick={() => setIsModalOpen(false)}>Cancel</button>

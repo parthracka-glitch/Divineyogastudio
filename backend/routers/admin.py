@@ -85,11 +85,99 @@ async def list_clients(search: str = "", status: str = "", batch_id: str = ""):
 @router.post("/clients")
 async def create_client(input: ClientInput, request: Request, admin: dict = Depends(current_admin)):
     data = document(input)
-    data.update({"id": record_id(), "medical_notes": encrypt_text(data.get("medical_notes")), "created_at": now_iso(), "updated_at": now_iso(), "is_deleted": False})
+    client_id = record_id()
+    data.update({
+        "id": client_id,
+        "medical_notes": encrypt_text(data.get("medical_notes")),
+        "created_at": now_iso(),
+        "updated_at": now_iso(),
+        "is_deleted": False
+    })
+
+    # Auto-resolve batch name
+    if data.get("batch_id"):
+        batch = await db.batches.find_one({"id": data["batch_id"]}, {"_id": 0})
+        if batch:
+            data["batch_name"] = batch.get("name")
+
+    # Auto-resolve plan and generate subscription + initial payment ledger invoice
+    plan_id = data.get("plan_id")
+    if plan_id:
+        plan = await db.membership_plans.find_one({"id": plan_id}, {"_id": 0})
+        if plan:
+            data["plan_name"] = plan.get("name")
+            duration_days = int(plan.get("duration_days", 30))
+            join_date_obj = date.fromisoformat(str(data["join_date"]))
+            renewal_date = (join_date_obj + timedelta(days=duration_days)).isoformat()
+            data["next_renewal_date"] = renewal_date
+
+            # 1. Create active subscription
+            sub_id = record_id()
+            sub_doc = {
+                "id": sub_id,
+                "client_id": client_id,
+                "client_name": data["full_name"],
+                "plan_id": plan["id"],
+                "plan_name": plan["name"],
+                "amount": plan["amount"],
+                "start_date": str(data["join_date"]),
+                "end_date": renewal_date,
+                "status": "active",
+                "created_at": now_iso()
+            }
+            await db.subscriptions.insert_one(sub_doc)
+
+            # 2. Auto-generate payment / invoice record
+            init_status = data.get("initial_payment_status") or "paid"
+            amount_due = float(plan.get("amount", 1800))
+            if init_status == "paid":
+                amount_paid = float(data.get("initial_amount_paid") or amount_due)
+                pay_status = "paid"
+                pay_date = str(data["join_date"])
+                due_date_str = renewal_date
+            elif init_status == "partial":
+                amount_paid = float(data.get("initial_amount_paid") or 0)
+                pay_status = "partial" if amount_paid > 0 else "pending"
+                pay_date = str(data["join_date"]) if amount_paid > 0 else None
+                due_date_str = (join_date_obj + timedelta(days=7)).isoformat()
+            else:
+                amount_paid = 0.0
+                pay_status = "pending"
+                pay_date = None
+                due_date_str = (join_date_obj + timedelta(days=3)).isoformat()
+
+            pay_id = record_id()
+            receipt_no = f"REC-{join_date_obj.year}-{pay_id[:5].upper()}" if amount_paid > 0 else None
+
+            payment_doc = {
+                "id": pay_id,
+                "client_id": client_id,
+                "client_name": data["full_name"],
+                "phone_number": data["phone_number"],
+                "subscription_id": sub_id,
+                "batch_id": data.get("batch_id"),
+                "batch_name": data.get("batch_name"),
+                "plan_id": plan["id"],
+                "plan_name": plan["name"],
+                "amount": amount_due,
+                "amount_due": amount_due,
+                "amount_paid": amount_paid,
+                "payment_status": pay_status,
+                "billing_month": join_date_obj.strftime("%B %Y"),
+                "due_date": due_date_str,
+                "payment_date": pay_date,
+                "payment_method": data.get("payment_method") or ("UPI" if amount_paid > 0 else None),
+                "receipt_no": receipt_no,
+                "notes": data.get("notes") or f"Initial {plan['name']} membership fee",
+                "created_at": now_iso()
+            }
+            await db.payments.insert_one(payment_doc)
+
     try:
         await db.clients.insert_one(data)
     except Exception as exc:
         raise HTTPException(status_code=409, detail="A client with this phone number already exists") from exc
+
     data.pop("_id", None)
     data["medical_notes"] = decrypt_text(data.get("medical_notes"))
     await audit("client_created", request, admin["id"], {"client_id": data["id"]})
@@ -108,6 +196,23 @@ async def get_client(client_id: str):
 async def update_client(client_id: str, input: ClientInput, request: Request, admin: dict = Depends(current_admin)):
     await find_or_404("clients", client_id)
     data = document(input)
+
+    # Auto-resolve batch name if changed
+    if data.get("batch_id"):
+        batch = await db.batches.find_one({"id": data["batch_id"]}, {"_id": 0})
+        if batch:
+            data["batch_name"] = batch.get("name")
+
+    # Auto-resolve plan name if changed
+    if data.get("plan_id"):
+        plan = await db.membership_plans.find_one({"id": data["plan_id"]}, {"_id": 0})
+        if plan:
+            data["plan_name"] = plan.get("name")
+            if "join_date" in data:
+                duration_days = int(plan.get("duration_days", 30))
+                join_date_obj = date.fromisoformat(str(data["join_date"]))
+                data["next_renewal_date"] = (join_date_obj + timedelta(days=duration_days)).isoformat()
+
     data["medical_notes"] = encrypt_text(data.get("medical_notes"))
     data["updated_at"] = now_iso()
     await db.clients.update_one({"id": client_id}, {"$set": data})

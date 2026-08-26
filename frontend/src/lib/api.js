@@ -40,7 +40,14 @@ export function formatApiError(error) {
 
   const detail = error.response?.data?.detail;
   if (typeof detail === "string") return detail;
-  if (Array.isArray(detail)) return detail.map((item) => item.msg).join(" ");
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        const field = item.loc && item.loc.length > 1 ? item.loc.slice(1).join(".") : "";
+        return field ? `${field}: ${item.msg}` : item.msg;
+      })
+      .join("; ");
+  }
   if (error.response?.status === 502 || error.response?.status === 503) {
     return "Backend service is currently starting up or unavailable. Please wait a moment and try again.";
   }

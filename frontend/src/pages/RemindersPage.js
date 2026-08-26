@@ -2,11 +2,15 @@ import { useEffect, useState } from "react";
 import PageHeader from "../components/PageHeader";
 import Modal from "../components/Modal";
 import api, { formatApiError } from "../lib/api";
-import { CheckCircle2, MessageCircle, Plus } from "../icons";
+import { CheckCircle2, MessageCircle, Plus, Sparkles } from "../icons";
+import { getWhatsAppDirectUrl } from "../lib/whatsappUtils";
+
+const formatRupees = (value) => `₹${Number(value || 0).toLocaleString("en-IN")}`;
 
 export default function RemindersPage() {
   const [templates, setTemplates] = useState([]);
   const [logs, setLogs] = useState([]);
+  const [pendingPayments, setPendingPayments] = useState([]);
   const [notice, setNotice] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState(null);
@@ -21,19 +25,23 @@ export default function RemindersPage() {
 
   const load = async () => {
     try {
-      const [templateResponse, logResponse] = await Promise.all([
+      const [templateResponse, logResponse, paymentsResponse] = await Promise.all([
         api.get("/api/v1/admin/reminders/templates"),
         api.get("/api/v1/admin/reminders/logs"),
+        api.get("/api/v1/admin/payments", { params: { status: "overdue" } }).catch(() => ({ data: [] })),
       ]);
       setTemplates(templateResponse.data);
       setLogs(logResponse.data);
+      setPendingPayments(paymentsResponse.data);
     } catch (error) {
       setNotice(formatApiError(error));
     }
   };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const openCreateModal = () => {
     setEditingTemplate(null);
@@ -100,28 +108,107 @@ export default function RemindersPage() {
   return (
     <section data-testid="reminders-page">
       <PageHeader
-        eyebrow="WhatsApp reminder engine"
-        title="Reminders"
-        description="Messages are safely queued and logged until your WATI connection is added."
+        eyebrow="WhatsApp Reminder Engine"
+        title="Reminders & Notifications"
+        description="Automate 3-stage renewal reminders (T-3 Days, Due Today, Overdue) and send 1-click personalized WhatsApp messages."
         action={
           <button className="primary-button" data-testid="add-reminder-template-button" onClick={openCreateModal}>
-            <Plus size={17} />New template
+            <Plus size={17} /> New template
           </button>
         }
       />
+
       {notice && <p className="inline-notice" data-testid="reminder-notice">{notice}</p>}
+
+      {/* Immediate Attention & 1-Click WhatsApp Section */}
+      {pendingPayments.length > 0 && (
+        <section style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "8px", padding: "20px", marginBottom: "25px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <Sparkles size={18} style={{ color: "var(--sage)" }} />
+              <h2 style={{ fontSize: "17px", margin: 0 }}>Instant WhatsApp Renewal Follow-Ups ({pendingPayments.length})</h2>
+            </div>
+            <span style={{ fontSize: "12px", color: "var(--muted)" }}>Click to open pre-filled WhatsApp chat</span>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "12px" }}>
+            {pendingPayments.map((p) => {
+              const balance = p.amount_due - p.amount_paid;
+              const waUrl = getWhatsAppDirectUrl({
+                phoneNumber: p.client?.phone_number,
+                clientName: p.client?.full_name,
+                planName: p.plan_name || "Yoga Pass",
+                batchName: p.batch_name || "",
+                amount: balance,
+                dueDate: p.due_date,
+                reminderType: "overdue",
+              });
+
+              return (
+                <div
+                  key={p.id}
+                  style={{
+                    background: "#faf9f6",
+                    border: "1px solid #e5e2d8",
+                    borderRadius: "8px",
+                    padding: "12px 14px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <div>
+                    <strong style={{ fontSize: "14px", color: "var(--ink)", display: "block" }}>
+                      {p.client?.full_name || "Practitioner"}
+                    </strong>
+                    <small style={{ color: "var(--muted)", fontSize: "11px" }}>
+                      Due {p.due_date} · {formatRupees(balance)} pending
+                    </small>
+                  </div>
+
+                  <a
+                    href={waUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="secondary-button"
+                    style={{
+                      padding: "6px 11px",
+                      fontSize: "11px",
+                      backgroundColor: "#edf7eb",
+                      borderColor: "#b9deb0",
+                      color: "#275e18",
+                      fontWeight: "700",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "5px",
+                      textDecoration: "none",
+                    }}
+                    title={`Send WhatsApp message to ${p.client?.full_name}`}
+                  >
+                    <MessageCircle size={14} /> Send WhatsApp
+                  </a>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* 2-Column: Active Templates & Delivery Log */}
       <div className="reminder-layout">
         <section>
           <div className="section-heading">
             <MessageCircle size={19} />
-            <h2>Active templates</h2>
+            <h2>Active templates & triggers</h2>
           </div>
           <div className="template-stack">
             {templates.map((template) => (
               <article className="template-card" key={template.id} data-testid={`template-card-${template.id}`}>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
-                    <span className="tag">{template.trigger_type?.replaceAll("_", " ")}</span>
+                    <span className="tag" style={{ textTransform: "capitalize" }}>
+                      {template.trigger_type?.replaceAll("_", " ")} ({template.offset_days} days)
+                    </span>
                     <div style={{ display: "flex", gap: "8px" }}>
                       <button
                         type="button"
@@ -142,9 +229,10 @@ export default function RemindersPage() {
                     </div>
                   </div>
                   <h3>{template.name}</h3>
-                  <p>{template.message_body}</p>
+                  <p style={{ whiteSpace: "pre-wrap", fontSize: "12px", color: "var(--muted)", lineHeight: 1.5 }}>
+                    {template.message_body}
+                  </p>
                 </div>
-                <small style={{ marginTop: "8px" }}>{template.offset_days} day{template.offset_days === 1 ? "" : "s"} offset</small>
               </article>
             ))}
             {!templates.length && <p className="empty-copy">No reminder templates created yet.</p>}
@@ -154,7 +242,7 @@ export default function RemindersPage() {
         <section className="queue-panel" data-testid="reminder-log-panel">
           <div className="section-heading">
             <CheckCircle2 size={19} />
-            <h2>Queue & delivery log</h2>
+            <h2>Delivery & automation log</h2>
           </div>
           {logs.length ? (
             logs.map((log) => (
@@ -170,7 +258,7 @@ export default function RemindersPage() {
           ) : (
             <div className="empty-log" data-testid="reminder-logs-empty-state">
               <MessageCircle size={32} style={{ color: "var(--sage)", margin: "30px auto 10px", display: "block", opacity: 0.6 }} />
-              <p>No messages have been queued yet.</p>
+              <p>No automated messages dispatched today.</p>
             </div>
           )}
         </section>
@@ -179,61 +267,65 @@ export default function RemindersPage() {
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title={editingTemplate ? "Edit Reminder Template" : "Create Reminder Template"}
-        subtitle="Configure automated WhatsApp reminder messages."
+        title={editingTemplate ? "Edit Template" : "New Reminder Template"}
+        subtitle="Configure the automated message and trigger rules."
       >
         <form onSubmit={handleSaveTemplate} className="modal-form">
           <div className="modal-field">
             <label>Template Name *</label>
             <input
               type="text"
-              placeholder="e.g. Overdue payment notice"
+              placeholder="e.g. 3-Day Advance Renewal Alert"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               required
             />
           </div>
 
-          <div className="modal-field">
-            <label>Trigger Event</label>
-            <select
-              value={formData.triggerType}
-              onChange={(e) => setFormData({ ...formData, triggerType: e.target.value })}
-            >
-              <option value="overdue">Overdue Payment</option>
-              <option value="before_due">Before Due Date</option>
-              <option value="due_date">On Due Date</option>
-            </select>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+            <div className="modal-field">
+              <label>Trigger Stage *</label>
+              <select
+                value={formData.triggerType}
+                onChange={(e) => setFormData({ ...formData, triggerType: e.target.value })}
+              >
+                <option value="before_due">Before Due Date (Advance Notice)</option>
+                <option value="on_due">On Due Date (Due Today)</option>
+                <option value="overdue">After Due Date (Overdue Alert)</option>
+              </select>
+            </div>
+
+            <div className="modal-field">
+              <label>Offset (Days) *</label>
+              <input
+                type="number"
+                placeholder="3"
+                value={formData.offsetDays}
+                onChange={(e) => setFormData({ ...formData, offsetDays: e.target.value })}
+                required
+              />
+            </div>
           </div>
 
           <div className="modal-field">
-            <label>Offset Days</label>
-            <input
-              type="number"
-              placeholder="3"
-              value={formData.offsetDays}
-              onChange={(e) => setFormData({ ...formData, offsetDays: e.target.value })}
-              required
-            />
-          </div>
-
-          <div className="modal-field">
-            <label>Message Body *</label>
+            <label>Message Content *</label>
             <textarea
-              placeholder="Namaste {name}, your fee of ₹{amount} is due..."
               value={formData.messageBody}
               onChange={(e) => setFormData({ ...formData, messageBody: e.target.value })}
+              rows={4}
               required
             />
-            <small style={{ color: "var(--muted)", fontSize: "11px" }}>
-              Available placeholders: <code>{"{name}"}</code>, <code>{"{amount}"}</code>, <code>{"{due_date}"}</code>, <code>{"{month}"}</code>, <code>{"{studio_name}"}</code>
+            <small style={{ color: "var(--muted)", fontSize: "11px", display: "block", marginTop: "4px" }}>
+              Available placeholders: {"{name}"}, {"{amount}"}, {"{due_date}"}, {"{studio_name}"}
             </small>
           </div>
 
           <div className="modal-actions">
-            <button type="button" className="secondary-button" onClick={() => setIsModalOpen(false)}>Cancel</button>
+            <button type="button" className="secondary-button" onClick={() => setIsModalOpen(false)}>
+              Cancel
+            </button>
             <button type="submit" className="primary-button" disabled={busy}>
-              {busy ? "Saving..." : (editingTemplate ? "Update Template" : "Save Template")}
+              {busy ? "Saving..." : editingTemplate ? "Update Template" : "Save Template"}
             </button>
           </div>
         </form>
