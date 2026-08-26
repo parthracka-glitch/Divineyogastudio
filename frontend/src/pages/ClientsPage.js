@@ -324,16 +324,6 @@ export default function ClientsPage() {
               const planDisplayName = planObj ? planObj.name : (client.plan_name || "1 Month Plan");
               const planAmount = planObj ? planObj.amount : 1800;
 
-              const whatsappUrl = getWhatsAppDirectUrl({
-                phoneNumber: client.phone_number,
-                clientName: client.full_name,
-                planName: planDisplayName,
-                batchName: batchDisplayName,
-                amount: planAmount,
-                dueDate: client.next_renewal_date || "Soon",
-                reminderType: "renewal_upcoming",
-              });
-
               return (
                 <tr key={client.id} data-testid={`client-row-${client.id}`}>
                   <td>

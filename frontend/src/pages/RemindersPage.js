@@ -136,15 +136,6 @@ export default function RemindersPage() {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "12px" }}>
             {pendingPayments.map((p) => {
               const balance = p.amount_due - p.amount_paid;
-              const waUrl = getWhatsAppDirectUrl({
-                phoneNumber: p.client?.phone_number,
-                clientName: p.client?.full_name,
-                planName: p.plan_name || "Yoga Pass",
-                batchName: p.batch_name || "",
-                amount: balance,
-                dueDate: p.due_date,
-                reminderType: "overdue",
-              });
 
               return (
                 <div
