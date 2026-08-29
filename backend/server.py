@@ -87,8 +87,10 @@ async def security_and_rate_limit(request: Request, call_next):
 
 
 @app.exception_handler(Exception)
-async def unexpected_error(_: Request, __: Exception):
-    return JSONResponse(status_code=500, content={"detail": "Something went wrong. Please try again."})
+async def unexpected_error(_: Request, exc: Exception):
+    import traceback
+    traceback.print_exc()
+    return JSONResponse(status_code=500, content={"detail": f"Database or server error: {str(exc)}"})
 
 
 @app.get("/")

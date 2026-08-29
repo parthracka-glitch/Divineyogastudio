@@ -19,10 +19,9 @@ _active_db = None
 
 
 def _create_mongo_client(url: str):
-    kwargs = {"serverSelectionTimeoutMS": 5000}
+    kwargs = {"serverSelectionTimeoutMS": 10000}
     if url.startswith("mongodb+srv://") or "mongodb.net" in url:
         kwargs["tlsCAFile"] = certifi.where()
-        kwargs["tlsAllowInvalidCertificates"] = True
     return AsyncIOMotorClient(url, **kwargs)
 
 
