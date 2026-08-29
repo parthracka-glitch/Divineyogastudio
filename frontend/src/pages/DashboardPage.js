@@ -3,14 +3,17 @@ import { Link } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
 import api, { formatApiError } from "../lib/api";
 import {
+  AlertTriangle,
   ArrowUpRight,
   Baby,
+  BellRing,
   CalendarDays,
   CircleDollarSign,
   Clock,
   Heart,
   MessageCircle,
   Moon,
+  Send,
   Smile,
   Sparkles,
   Sun,
@@ -26,6 +29,8 @@ import {
   getCategoryStyle,
   getPlanBadgeInfo,
 } from "../lib/batchUtils";
+import { updateAppBadge } from "../lib/pushNotifications";
+import WhatsAppReminderModal from "../components/WhatsAppReminderModal";
 
 const formatRupees = (value) => `₹${Number(value || 0).toLocaleString("en-IN")}`;
 
@@ -46,24 +51,43 @@ export default function DashboardPage() {
   const [batches, setBatches] = useState([]);
   const [plans, setPlans] = useState([]);
   const [clients, setClients] = useState([]);
+  const [expiries, setExpiries] = useState({
+    expiring_today: [],
+    expiring_soon: [],
+    expired: [],
+    total_attention_count: 0,
+  });
+  const [expiryTab, setExpiryTab] = useState("all");
+  const [whatsappClient, setWhatsappClient] = useState(null);
+  const [isWhatsappModalOpen, setIsWhatsappModalOpen] = useState(false);
   const [notice, setNotice] = useState("");
 
-  useEffect(() => {
+  const loadData = () => {
     Promise.all([
       api.get("/api/v1/admin/dashboard/summary"),
       api.get("/api/v1/admin/payments", { params: { status: "overdue" } }),
       api.get("/api/v1/admin/batches").catch(() => ({ data: [] })),
       api.get("/api/v1/admin/plans").catch(() => ({ data: [] })),
       api.get("/api/v1/admin/clients").catch(() => ({ data: [] })),
+      api.get("/api/v1/admin/clients/expiring").catch(() => ({
+        data: { expiring_today: [], expiring_soon: [], expired: [], total_attention_count: 0 },
+      })),
     ])
-      .then(([summaryRes, paymentsRes, batchesRes, plansRes, clientsRes]) => {
+      .then(([summaryRes, paymentsRes, batchesRes, plansRes, clientsRes, expiriesRes]) => {
         setSummary(summaryRes.data);
         setPayments(paymentsRes.data.slice(0, 4));
         setBatches(batchesRes.data);
         setPlans(plansRes.data);
         setClients(clientsRes.data);
+        setExpiries(expiriesRes.data);
+        // Sync app badge on iPhone / Android home screen
+        updateAppBadge(expiriesRes.data.total_attention_count || 0);
       })
       .catch((error) => setNotice(formatApiError(error)));
+  };
+
+  useEffect(() => {
+    loadData();
   }, []);
 
   const todayFormatted = new Date().toLocaleDateString("en-IN", {
@@ -73,14 +97,18 @@ export default function DashboardPage() {
     year: "numeric",
   });
 
+  const expiringCount = expiries.total_attention_count || summary?.total_expiring_attention || 0;
+
   const cards = summary
     ? [
         ["Collected this month", formatRupees(summary.total_collected), CircleDollarSign, "sage"],
         ["Total pending", formatRupees(summary.total_pending), WalletCards, "amber"],
         ["Overdue accounts", summary.overdue_count, ArrowUpRight, "coral"],
+        ["Expiring plans", expiringCount, BellRing, expiringCount > 0 ? "coral" : "sage"],
         ["Reminders today", summary.reminders_today, MessageCircle, "ink"],
       ]
     : [];
+
 
   return (
     <section data-testid="dashboard-page">
@@ -160,8 +188,173 @@ export default function DashboardPage() {
         </aside>
       </div>
 
+      {/* Plan Expiries & Renewal Radar (iPhone & Android Home Screen Focus) */}
+      <section className="overview-panel" style={{ marginTop: "24px", marginBottom: "24px" }} data-testid="plan-expiries-panel">
+        <div className="panel-heading" style={{ flexWrap: "wrap", gap: "12px" }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "7px", marginBottom: "3px" }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", backgroundColor: "#fef3c7", color: "#92400e", fontSize: "11px", fontWeight: "700", padding: "2px 8px", borderRadius: "12px" }}>
+                <BellRing size={12} /> Renewal Radar
+              </span>
+              <span style={{ fontSize: "12px", color: "var(--muted)" }}>Phone Alerts · iOS & Android</span>
+            </div>
+            <h2 style={{ fontSize: "20px" }}>
+              Plan Expiry Attention ({expiringCount})
+            </h2>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+            <Link to="/reminders" className="text-link" style={{ fontSize: "12px" }}>
+              Reminder Queue <ArrowUpRight size={14} />
+            </Link>
+            <Link to="/settings" className="secondary-button" style={{ fontSize: "11px", padding: "5px 10px" }}>
+              🔔 Push Settings
+            </Link>
+          </div>
+        </div>
+
+        {/* Filter Pills */}
+        <div style={{ display: "flex", gap: "8px", margin: "12px 0 16px", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={() => setExpiryTab("all")}
+            className={expiryTab === "all" ? "primary-button" : "secondary-button"}
+            style={{ fontSize: "12px", padding: "5px 12px", borderRadius: "20px" }}
+          >
+            All Attention ({expiries.total_attention_count})
+          </button>
+          <button
+            type="button"
+            onClick={() => setExpiryTab("soon")}
+            className={expiryTab === "soon" ? "primary-button" : "secondary-button"}
+            style={{ fontSize: "12px", padding: "5px 12px", borderRadius: "20px" }}
+          >
+            Expiring in 7 Days ({expiries.expiring_soon.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setExpiryTab("today")}
+            className={expiryTab === "today" ? "primary-button" : "secondary-button"}
+            style={{ fontSize: "12px", padding: "5px 12px", borderRadius: "20px" }}
+          >
+            Due Today ({expiries.expiring_today.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setExpiryTab("expired")}
+            className={expiryTab === "expired" ? "primary-button" : "secondary-button"}
+            style={{ fontSize: "12px", padding: "5px 12px", borderRadius: "20px" }}
+          >
+            Recently Expired ({expiries.expired.length})
+          </button>
+        </div>
+
+        {/* Expiry Cards / List */}
+        <div className="mini-table">
+          {(expiryTab === "soon"
+            ? expiries.expiring_soon
+            : expiryTab === "today"
+            ? expiries.expiring_today
+            : expiryTab === "expired"
+            ? expiries.expired
+            : [
+                ...expiries.expiring_today,
+                ...expiries.expiring_soon,
+                ...expiries.expired,
+              ]
+          ).map((item) => {
+            const isToday = item.days_diff === 0;
+            const isSoon = item.days_diff > 0;
+            const statusLabel = isToday
+              ? "Expires Today"
+              : isSoon
+              ? `In ${item.days_diff}d (${item.renewal_date})`
+              : `Expired ${Math.abs(item.days_diff)}d ago`;
+
+            const badgeBg = isToday ? "#fee2e2" : isSoon ? "#fef3c7" : "#f3f4f6";
+            const badgeColor = isToday ? "#b91c1c" : isSoon ? "#92400e" : "#4b5563";
+
+            return (
+              <div
+                className="mini-row"
+                key={item.id}
+                data-testid={`expiring-client-${item.id}`}
+                style={{ gridTemplateColumns: "34px minmax(0,1.5fr) auto auto", gap: "10px" }}
+              >
+                <div className="person-dot">{item.full_name?.[0] || "P"}</div>
+                <div>
+                  <strong>{item.full_name}</strong>
+                  <small>
+                    {item.batch_name || "General Batch"} · <b>{item.plan_name || "Membership Plan"}</b>
+                  </small>
+                </div>
+                <div>
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: "700",
+                      padding: "3px 8px",
+                      borderRadius: "10px",
+                      backgroundColor: badgeBg,
+                      color: badgeColor,
+                      display: "inline-block",
+                    }}
+                  >
+                    {statusLabel}
+                  </span>
+                </div>
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setWhatsappClient(item);
+                      setIsWhatsappModalOpen(true);
+                    }}
+                    className="secondary-button"
+                    style={{
+                      padding: "6px 12px",
+                      fontSize: "12px",
+                      backgroundColor: "#edf7eb",
+                      borderColor: "#b9deb0",
+                      color: "#275e18",
+                      fontWeight: "700",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "5px",
+                      cursor: "pointer",
+                      borderRadius: "6px",
+                    }}
+                    title={`Send 1-click WhatsApp renewal reminder to ${item.full_name}`}
+                  >
+                    <MessageCircle size={14} /> Send WhatsApp
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+          {!(
+            (expiryTab === "soon"
+              ? expiries.expiring_soon
+              : expiryTab === "today"
+              ? expiries.expiring_today
+              : expiryTab === "expired"
+              ? expiries.expired
+              : [
+                  ...expiries.expiring_today,
+                  ...expiries.expiring_soon,
+                  ...expiries.expired,
+                ]
+            ).length
+          ) && (
+            <p className="empty-copy" style={{ padding: "20px 0", textAlign: "center" }}>
+              ✨ No memberships in this category right now. All practitioners are active!
+            </p>
+          )}
+        </div>
+      </section>
+
       {/* Studio Batches & Daily Schedule Section */}
       <section className="dashboard-schedule-panel" data-testid="dashboard-batches-panel">
+
         <div className="panel-heading">
           <div>
             <p className="eyebrow" style={{ color: "var(--sage)", fontWeight: "700" }}>Class operations</p>
@@ -316,6 +509,21 @@ export default function DashboardPage() {
           )}
         </div>
       </section>
+
+      {/* 1-Click WhatsApp Reminder Modal for Expiring Client */}
+      {isWhatsappModalOpen && (
+        <WhatsAppReminderModal
+          isOpen={isWhatsappModalOpen}
+          onClose={() => {
+            setIsWhatsappModalOpen(false);
+            setWhatsappClient(null);
+          }}
+          client={whatsappClient}
+          onSuccess={() => {
+            loadData();
+          }}
+        />
+      )}
     </section>
   );
 }

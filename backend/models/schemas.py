@@ -128,3 +128,21 @@ class DirectReminderLogInput(StrictModel):
     template_name: str | None = None
     message_text: str = Field(min_length=1, max_length=2000)
     payment_id: str | None = None
+
+
+class PushSubscriptionKeys(StrictModel):
+    p256dh: str
+    auth: str
+
+
+class PushSubscriptionInput(StrictModel):
+    endpoint: str
+    keys: PushSubscriptionKeys
+    device_info: str | None = None
+
+
+class OwnerSettingsInput(StrictModel):
+    owner_whatsapp: str | None = None
+    morning_digest_enabled: bool = True
+    push_notifications_enabled: bool = True
+    expiry_remind_days: list[int] = Field(default=[7, 3, 0])

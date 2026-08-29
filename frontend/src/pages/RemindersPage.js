@@ -15,7 +15,15 @@ export default function RemindersPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [whatsappPayment, setWhatsappPayment] = useState(null);
+  const [whatsappClient, setWhatsappClient] = useState(null);
   const [isWhatsappModalOpen, setIsWhatsappModalOpen] = useState(false);
+  const [expiries, setExpiries] = useState({
+    expiring_today: [],
+    expiring_soon: [],
+    expired: [],
+    total_attention_count: 0,
+  });
+  const [triggeringDigest, setTriggeringDigest] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -27,22 +35,42 @@ export default function RemindersPage() {
 
   const load = async () => {
     try {
-      const [templateResponse, logResponse, paymentsResponse] = await Promise.all([
+      const [templateResponse, logResponse, paymentsResponse, expiriesResponse] = await Promise.all([
         api.get("/api/v1/admin/reminders/templates"),
         api.get("/api/v1/admin/reminders/logs"),
         api.get("/api/v1/admin/payments", { params: { status: "overdue" } }).catch(() => ({ data: [] })),
+        api.get("/api/v1/admin/clients/expiring").catch(() => ({
+          data: { expiring_today: [], expiring_soon: [], expired: [], total_attention_count: 0 },
+        })),
       ]);
       setTemplates(templateResponse.data);
       setLogs(logResponse.data);
       setPendingPayments(paymentsResponse.data);
+      setExpiries(expiriesResponse.data);
     } catch (error) {
       setNotice(formatApiError(error));
+    }
+  };
+
+  const handleTriggerDailyDigest = async () => {
+    setTriggeringDigest(true);
+    try {
+      const res = await api.post("/api/v1/admin/owner-digest/trigger");
+      setNotice(
+        `Daily check completed! Sent push to ${res.data.push_result?.sent || 0} registered device(s). ${res.data.total_attention_count} client(s) need renewal attention.`
+      );
+      load();
+    } catch (err) {
+      setNotice(formatApiError(err));
+    } finally {
+      setTriggeringDigest(false);
     }
   };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     load();
+
   }, []);
 
   const openCreateModal = () => {
@@ -114,16 +142,128 @@ export default function RemindersPage() {
         title="Reminders & Notifications"
         description="Automate 3-stage renewal reminders (T-3 Days, Due Today, Overdue) and send 1-click personalized WhatsApp messages."
         action={
-          <button className="primary-button" data-testid="add-reminder-template-button" onClick={openCreateModal}>
-            <Plus size={17} /> New template
-          </button>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <button
+              className="secondary-button"
+              onClick={handleTriggerDailyDigest}
+              disabled={triggeringDigest}
+              style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+              title="Test push notification to iPhone / Android and send daily summary"
+            >
+              <Sparkles size={16} />
+              {triggeringDigest ? "Sending Alert..." : "🔔 Send Daily Expiry Alert Now"}
+            </button>
+            <button className="primary-button" data-testid="add-reminder-template-button" onClick={openCreateModal}>
+              <Plus size={17} /> New template
+            </button>
+          </div>
         }
       />
 
       {notice && <p className="inline-notice" data-testid="reminder-notice">{notice}</p>}
 
+      {/* Plan Expiries & Membership Renewals (PWA Attention) */}
+      {expiries.total_attention_count > 0 && (
+        <section style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "8px", padding: "20px", marginBottom: "25px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px", flexWrap: "wrap", gap: "8px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", backgroundColor: "#fef3c7", color: "#92400e", fontSize: "11px", fontWeight: "700", padding: "3px 8px", borderRadius: "10px" }}>
+                🔔 Expiry Radar
+              </span>
+              <h2 style={{ fontSize: "17px", margin: 0 }}>
+                Membership Expiries Requiring Follow-Up ({expiries.total_attention_count})
+              </h2>
+            </div>
+            <span style={{ fontSize: "12px", color: "var(--muted)" }}>
+              {expiries.expiring_today.length} today · {expiries.expiring_soon.length} in next 7 days · {expiries.expired.length} expired
+            </span>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "12px" }}>
+            {[...expiries.expiring_today, ...expiries.expiring_soon, ...expiries.expired].slice(0, 8).map((client) => {
+              const isToday = client.days_diff === 0;
+              const isSoon = client.days_diff > 0;
+              const statusText = isToday
+                ? "Expires Today"
+                : isSoon
+                ? `Expires in ${client.days_diff}d (${client.renewal_date})`
+                : `Expired ${Math.abs(client.days_diff)}d ago`;
+              const badgeBg = isToday ? "#fee2e2" : isSoon ? "#fef3c7" : "#f3f4f6";
+              const badgeColor = isToday ? "#b91c1c" : isSoon ? "#92400e" : "#4b5563";
+
+              return (
+                <div
+                  key={client.id}
+                  style={{
+                    background: "#faf9f6",
+                    border: "1px solid #e5e2d8",
+                    borderRadius: "8px",
+                    padding: "12px 14px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: "10px",
+                  }}
+                >
+                  <div>
+                    <strong style={{ fontSize: "14px", color: "var(--ink)", display: "block" }}>
+                      {client.full_name}
+                    </strong>
+                    <small style={{ color: "var(--muted)", fontSize: "11px", display: "block", marginTop: "2px" }}>
+                      {client.batch_name || "General Batch"} · {client.plan_name || "Plan"}
+                    </small>
+                    <span
+                      style={{
+                        fontSize: "10px",
+                        fontWeight: "700",
+                        padding: "2px 6px",
+                        borderRadius: "8px",
+                        backgroundColor: badgeBg,
+                        color: badgeColor,
+                        display: "inline-block",
+                        marginTop: "4px",
+                      }}
+                    >
+                      {statusText}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setWhatsappPayment(null);
+                      setWhatsappClient(client);
+                      setIsWhatsappModalOpen(true);
+                    }}
+                    className="secondary-button"
+                    style={{
+                      padding: "6px 11px",
+                      fontSize: "11px",
+                      backgroundColor: "#edf7eb",
+                      borderColor: "#b9deb0",
+                      color: "#275e18",
+                      fontWeight: "700",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "5px",
+                      cursor: "pointer",
+                      borderRadius: "6px",
+                      flexShrink: 0,
+                    }}
+                    title={`Send 1-click renewal reminder to ${client.full_name}`}
+                  >
+                    <MessageCircle size={14} /> Send WhatsApp
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       {/* Immediate Attention & 1-Click WhatsApp Section */}
       {pendingPayments.length > 0 && (
+
         <section style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "8px", padding: "20px", marginBottom: "25px" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -329,8 +469,12 @@ export default function RemindersPage() {
       {/* Interactive WhatsApp Reminder & Message Selector Modal */}
       <WhatsAppReminderModal
         isOpen={isWhatsappModalOpen}
-        onClose={() => setIsWhatsappModalOpen(false)}
-        client={whatsappPayment?.client}
+        onClose={() => {
+          setIsWhatsappModalOpen(false);
+          setWhatsappPayment(null);
+          setWhatsappClient(null);
+        }}
+        client={whatsappClient || whatsappPayment?.client}
         payment={whatsappPayment}
         onSuccess={(msg) => {
           setNotice(msg);
@@ -338,5 +482,6 @@ export default function RemindersPage() {
         }}
       />
     </section>
+
   );
 }

@@ -7,9 +7,30 @@ from fastapi.responses import StreamingResponse
 
 from core.database import db
 from core.security import decrypt_text, encrypt_text, now_iso
-from models.schemas import BatchInput, ClientInput, PaymentInput, PaymentUpdate, PlanInput, ReminderSendInput, ReminderTemplateInput, SubscriptionInput
+from models.schemas import (
+    BatchInput,
+    ClientInput,
+    OwnerSettingsInput,
+    PaymentInput,
+    PaymentUpdate,
+    PlanInput,
+    PushSubscriptionInput,
+    ReminderSendInput,
+    ReminderTemplateInput,
+    SubscriptionInput,
+)
 from routers.auth import audit, current_admin
-from services.reminders import queue_reminder
+from services.push_service import (
+    get_public_vapid_key,
+    remove_subscription,
+    save_subscription,
+    send_web_push,
+)
+from services.reminders import (
+    get_all_expiring_clients,
+    queue_reminder,
+    send_owner_expiry_digest,
+)
 from services.seed import record_id
 
 
@@ -56,7 +77,23 @@ async def dashboard_summary():
     overdue = [p for p in open_payments if p["due_date"] < str(today)]
     clients = await db.clients.count_documents({"status": "active"})
     reminder_count = await db.reminder_logs.count_documents({"sent_date": str(today)})
-    return {"total_collected": monthly_collected, "total_pending": pending, "overdue_count": len(overdue), "projected_revenue": monthly_collected + pending, "active_clients": clients, "reminders_today": reminder_count}
+
+    # Expiry counts for dashboard metrics and attention
+    expiries = await get_all_expiring_clients(days_ahead=7)
+
+    return {
+        "total_collected": monthly_collected,
+        "total_pending": pending,
+        "overdue_count": len(overdue),
+        "projected_revenue": monthly_collected + pending,
+        "active_clients": clients,
+        "reminders_today": reminder_count,
+        "expiring_today_count": len(expiries["expiring_today"]),
+        "expiring_soon_count": len(expiries["expiring_soon"]),
+        "expired_count": len(expiries["expired"]),
+        "total_expiring_attention": expiries["total_attention_count"],
+    }
+
 
 
 @router.get("/dashboard/revenue-trend")
@@ -287,3 +324,78 @@ async def delete_plan(plan_id: str, request: Request, admin: dict = Depends(curr
     await db.membership_plans.delete_one({"id": plan_id})
     await audit("plan_deleted", request, admin["id"], {"plan_id": plan_id})
     return {"ok": True}
+
+
+# --- Expiring Memberships & Plan Renewals ---
+
+@router.get("/clients/expiring")
+async def list_expiring_clients(days_ahead: int = 7):
+    return await get_all_expiring_clients(days_ahead=days_ahead)
+
+
+# --- Web Push (iPhone PWA & Android) Endpoints ---
+
+@router.get("/push/vapid-public-key")
+async def get_vapid_key():
+    public_key = await get_public_vapid_key()
+    return {"public_key": public_key}
+
+
+@router.post("/push/subscribe")
+async def subscribe_push(input: PushSubscriptionInput, request: Request, admin: dict = Depends(current_admin)):
+    sub_data = input.model_dump()
+    result = await save_subscription(sub_data, admin_id=admin["id"])
+    await audit("push_subscribed", request, admin["id"], {"device_info": input.device_info})
+    return result
+
+
+@router.post("/push/unsubscribe")
+async def unsubscribe_push(payload: dict, request: Request, admin: dict = Depends(current_admin)):
+    endpoint = payload.get("endpoint")
+    if not endpoint:
+        raise HTTPException(status_code=400, detail="Missing endpoint")
+    await remove_subscription(endpoint)
+    await audit("push_unsubscribed", request, admin["id"])
+    return {"status": "unsubscribed"}
+
+
+@router.post("/push/test")
+async def test_push_notification(request: Request, admin: dict = Depends(current_admin)):
+    result = await send_web_push(
+        title="🔔 Divine Yoga Studio",
+        body="Notifications are working! You will receive client plan expiry reminders here on your lock screen.",
+        url="/reminders",
+        badge_count=1,
+    )
+    await audit("push_test_sent", request, admin["id"], result)
+    return result
+
+
+# --- Owner Notification Settings & Daily Digest ---
+
+@router.get("/owner-settings")
+async def get_owner_settings():
+    doc = await db.system_settings.find_one({"id": "owner_settings"}, {"_id": 0})
+    if not doc:
+        return {
+            "owner_whatsapp": "+919373574918",
+            "morning_digest_enabled": True,
+            "push_notifications_enabled": True,
+            "expiry_remind_days": [7, 3, 0],
+        }
+    return doc
+
+
+@router.put("/owner-settings")
+async def update_owner_settings(input: OwnerSettingsInput, request: Request, admin: dict = Depends(current_admin)):
+    data = input.model_dump() | {"id": "owner_settings", "updated_at": now_iso()}
+    await db.system_settings.update_one({"id": "owner_settings"}, {"$set": data}, upsert=True)
+    await audit("owner_settings_updated", request, admin["id"], {"whatsapp": input.owner_whatsapp})
+    return data
+
+
+@router.post("/owner-digest/trigger")
+async def trigger_owner_digest(request: Request, admin: dict = Depends(current_admin)):
+    result = await send_owner_expiry_digest(force=True)
+    await audit("owner_digest_triggered", request, admin["id"], {"attention_count": result["total_attention_count"]})
+    return result
