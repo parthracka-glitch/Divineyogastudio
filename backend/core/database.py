@@ -44,10 +44,18 @@ async def ensure_connection() -> None:
             await _active_client.admin.command("ping")
             print("[Database] Successfully connected to MongoDB cluster!")
         except Exception as err:
-            print(f"[Database Warning] Could not connect to MongoDB ({err}). Falling back to MongoMock in-memory database.")
-            from mongomock_motor import AsyncMongoMockClient
-            _active_client = AsyncMongoMockClient()
-            _active_db = _active_client[DB_NAME]
+            print(f"[Database Error] Connection check to MongoDB failed: {err}")
+            # Reconnect attempt without downgrading to volatile in-memory storage
+            if not use_mock:
+                try:
+                    _active_client = _create_mongo_client(MONGO_URL)
+                    _active_db = _active_client[DB_NAME]
+                except Exception as rec_err:
+                    print(f"[Database Error] Reconnection attempt failed: {rec_err}")
+            else:
+                from mongomock_motor import AsyncMongoMockClient
+                _active_client = AsyncMongoMockClient()
+                _active_db = _active_client[DB_NAME]
 
 
 class ClientProxy:
