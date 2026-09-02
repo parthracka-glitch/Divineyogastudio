@@ -15,7 +15,7 @@ ROOT_DIR = Path(__file__).parent
 sys.path.insert(0, str(ROOT_DIR))
 load_dotenv(ROOT_DIR / ".env")
 
-from core.database import client, create_indexes
+from core.database import check_database_health, client, create_indexes
 from routers.admin import router as admin_router
 from routers.auth import router as auth_router
 from routers.finance import router as finance_router
@@ -25,6 +25,8 @@ from services.reminders import run_daily_reminders
 from services.seed import seed_data
 
 requests_by_ip: dict[str, deque[float]] = defaultdict(deque)
+_last_prune_time = 0.0
+
 try:
     scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
 except Exception:
@@ -45,10 +47,14 @@ async def lifespan(_: FastAPI):
         print(f"[Startup Warning] Scheduler: {err}")
     yield
     try:
-        scheduler.shutdown(wait=False)
+        if scheduler.running:
+            scheduler.shutdown(wait=False)
     except Exception:
         pass
-    client.close()
+    try:
+        client.close()
+    except Exception:
+        pass
 
 
 raw_cors = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
@@ -67,16 +73,27 @@ app.add_middleware(
 
 @app.middleware("http")
 async def security_and_rate_limit(request: Request, call_next):
-    ip = request.client.host if request.client else "unknown"
+    global _last_prune_time
     now = time.monotonic()
+
+    # Periodic cleanup to prevent unbounded memory growth
+    if now - _last_prune_time > 300:
+        stale_keys = [k for k, q in list(requests_by_ip.items()) if not q or now - q[-1] > 120]
+        for k in stale_keys:
+            requests_by_ip.pop(k, None)
+        _last_prune_time = now
+
+    ip = request.client.host if request.client else "unknown"
     category = "login" if request.url.path.endswith("/auth/login") else "general"
-    bucket = requests_by_ip[f"{ip}:{category}"]
+    key = f"{ip}:{category}"
+    bucket = requests_by_ip[key]
     while bucket and now - bucket[0] > 60:
         bucket.popleft()
     login_limit = 5 if category == "login" else 100
     if len(bucket) >= login_limit:
         return JSONResponse(status_code=429, content={"detail": "Too many requests. Please try again shortly."})
     bucket.append(now)
+
     response = await call_next(request)
     response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload"
     response.headers["X-Content-Type-Options"] = "nosniff"
@@ -90,6 +107,9 @@ async def security_and_rate_limit(request: Request, call_next):
 async def unexpected_error(_: Request, exc: Exception):
     import traceback
     traceback.print_exc()
+    env = os.environ.get("ENVIRONMENT", "development").lower()
+    if env == "production":
+        return JSONResponse(status_code=500, content={"detail": "An internal server error occurred. Please contact the studio administrator."})
     return JSONResponse(status_code=500, content={"detail": f"Database or server error: {str(exc)}"})
 
 
@@ -100,7 +120,24 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    db_health = await check_database_health()
+    scheduler_running = bool(scheduler.running)
+    is_healthy = db_health.get("connected", False)
+    status_code = 200 if is_healthy else 503
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "status": "healthy" if is_healthy else "unhealthy",
+            "service": "divine-yoga-backend",
+            "database": db_health,
+            "scheduler": {
+                "running": scheduler_running,
+                "active_jobs": [job.id for job in scheduler.get_jobs()] if scheduler_running else [],
+            },
+            "timestamp": time.time(),
+        }
+    )
+
 
 
 app.include_router(auth_router)

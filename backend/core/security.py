@@ -35,9 +35,9 @@ FIELD_ENCRYPTION_SECRET = os.environ.get("FIELD_ENCRYPTION_SECRET", "divine-yoga
 
 if ENVIRONMENT == "production":
     if JWT_SECRET == "divine-yoga-default-secret-jwt-key":
-        print("[SECURITY CRITICAL] JWT_SECRET is set to the default key in production! Set JWT_SECRET in environment variables.")
+        raise RuntimeError("FATAL SECURITY ERROR: JWT_SECRET cannot be the default key in production! Set JWT_SECRET in environment variables.")
     if FIELD_ENCRYPTION_SECRET == "divine-yoga-default-field-secret":
-        print("[SECURITY CRITICAL] FIELD_ENCRYPTION_SECRET is set to the default key in production! Set FIELD_ENCRYPTION_SECRET in environment variables.")
+        raise RuntimeError("FATAL SECURITY ERROR: FIELD_ENCRYPTION_SECRET cannot be the default key in production! Set FIELD_ENCRYPTION_SECRET in environment variables.")
 
 
 

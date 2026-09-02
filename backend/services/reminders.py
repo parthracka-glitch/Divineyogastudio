@@ -249,18 +249,25 @@ async def run_daily_reminders() -> int:
     payments = await db.payments.find({"payment_status": {"$in": ["pending", "partial", "overdue"]}, "is_void": {"$ne": True}}, {"_id": 0}).to_list(1000)
     queued = 0
     for payment in payments:
-        due = date.fromisoformat(payment["due_date"])
-        for template in templates:
-            delta = (due - today).days if template["trigger_type"] == "before_due" else (today - due).days
-            expected = template["offset_days"] if template["trigger_type"] != "on_due" else 0
-            if delta == expected:
-                result = await queue_reminder(payment, template, "auto")
-                queued += result["status"] == "queued"
+        try:
+            due_str = payment.get("due_date")
+            if not due_str:
+                continue
+            due = date.fromisoformat(str(due_str)[:10])
+            for template in templates:
+                delta = (due - today).days if template.get("trigger_type") == "before_due" else (today - due).days
+                expected = template.get("offset_days", 0) if template.get("trigger_type") != "on_due" else 0
+                if delta == expected:
+                    result = await queue_reminder(payment, template, "auto")
+                    queued += result.get("status") == "queued"
+        except Exception as pay_err:
+            print(f"[Daily Reminders Warning] Error processing payment {payment.get('id')}: {pay_err}")
 
     # Also notify owner about plan expiries and send push notification to iPhone/Android
     try:
         await send_owner_expiry_digest(force=False)
     except Exception as ex:
         print(f"[Daily Reminders Warning] Failed to send owner expiry digest: {ex}")
+
 
     return queued

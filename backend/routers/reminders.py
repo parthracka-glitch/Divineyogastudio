@@ -24,8 +24,10 @@ async def list_templates():
 async def create_template(input: ReminderTemplateInput, request: Request, admin: dict = Depends(current_admin)):
     template = input.model_dump() | {"id": record_id()}
     await db.reminder_templates.insert_one(template)
+    template.pop("_id", None)
     await audit("reminder_template_created", request, admin["id"], {"template_id": template["id"]})
     return template
+
 
 
 @admin_router.put("/templates/{template_id}")

@@ -49,7 +49,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", 
 REFRESH_TOKEN_EXPIRE_MINUTES = int(os.environ.get("REFRESH_TOKEN_EXPIRE_MINUTES", "86400"))  # 60 days
 
 
-def set_session(response: Response, admin: dict, request: Request | None = None) -> tuple[str, str]:
+def _is_secure_cookie(request: Request | None) -> tuple[bool, str]:
     is_https = False
     if request:
         origin = request.headers.get("origin", "")
@@ -57,11 +57,17 @@ def set_session(response: Response, admin: dict, request: Request | None = None)
         is_https = proto == "https" or "vercel.app" in origin or "onrender.com" in origin
     is_secure = os.environ.get("SECURE_COOKIES", "false").lower() in ("true", "1") or is_https or bool(os.environ.get("RENDER"))
     samesite = "none" if is_secure else "lax"
+    return is_secure, samesite
+
+
+def set_session(response: Response, admin: dict, request: Request | None = None) -> tuple[str, str]:
+    is_secure, samesite = _is_secure_cookie(request)
     access_tok = token_for(admin["id"], admin["email"], "access", ACCESS_TOKEN_EXPIRE_MINUTES)
     refresh_tok = token_for(admin["id"], admin["email"], "refresh", REFRESH_TOKEN_EXPIRE_MINUTES)
     response.set_cookie("access_token", access_tok, httponly=True, secure=is_secure, samesite=samesite, max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60, path="/")
     response.set_cookie("refresh_token", refresh_tok, httponly=True, secure=is_secure, samesite=samesite, max_age=REFRESH_TOKEN_EXPIRE_MINUTES * 60, path="/")
     return access_tok, refresh_tok
+
 
 
 @router.post("/login")
@@ -131,8 +137,8 @@ async def refresh(response: Response, request: Request):
 @router.post("/logout")
 async def logout(response: Response, request: Request, admin: dict = Depends(current_admin)):
     await audit("logout", request, admin["id"])
-    is_secure = os.environ.get("SECURE_COOKIES", "false").lower() in ("true", "1")
-    samesite = "none" if is_secure else "lax"
+    is_secure, samesite = _is_secure_cookie(request)
     response.delete_cookie("access_token", path="/", secure=is_secure, samesite=samesite)
     response.delete_cookie("refresh_token", path="/", secure=is_secure, samesite=samesite)
-    return {"ok": True}
+    return {"ok": True}
+

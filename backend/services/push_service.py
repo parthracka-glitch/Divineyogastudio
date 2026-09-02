@@ -72,6 +72,18 @@ async def remove_subscription(endpoint: str) -> bool:
     return res.deleted_count > 0
 
 
+import asyncio
+
+def _send_single_push(subscription_info: dict, payload: str, private_pem: str, vapid_claims: dict) -> None:
+    webpush(
+        subscription_info=subscription_info,
+        data=payload,
+        vapid_private_key=private_pem,
+        vapid_claims=vapid_claims,
+        ttl=86400,
+    )
+
+
 async def send_web_push(title: str, body: str, url: str = "/", badge_count: int = 0) -> dict:
     keys = await get_or_create_vapid_keys()
     subscriptions = await db.push_subscriptions.find({}, {"_id": 0}).to_list(200)
@@ -105,12 +117,12 @@ async def send_web_push(title: str, body: str, url: str = "/", badge_count: int 
             "keys": sub["keys"],
         }
         try:
-            webpush(
-                subscription_info=subscription_info,
-                data=payload,
-                vapid_private_key=keys["private_pem"],
-                vapid_claims=vapid_claims,
-                ttl=86400,
+            await asyncio.to_thread(
+                _send_single_push,
+                subscription_info,
+                payload,
+                keys["private_pem"],
+                vapid_claims,
             )
             sent_count += 1
         except WebPushException as ex:
@@ -122,6 +134,7 @@ async def send_web_push(title: str, body: str, url: str = "/", badge_count: int 
         except Exception as ex:
             failed_count += 1
             logger.error("Unexpected error in webpush: %s", ex)
+
 
     if endpoints_to_remove:
         await db.push_subscriptions.delete_many({"endpoint": {"$in": endpoints_to_remove}})

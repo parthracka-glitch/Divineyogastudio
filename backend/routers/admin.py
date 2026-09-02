@@ -1,5 +1,8 @@
 import csv
 import io
+import json
+import os
+import re
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -39,6 +42,22 @@ router = APIRouter(prefix="/api/v1/admin", tags=["admin"], dependencies=[Depends
 
 @router.post("/reset-database")
 async def reset_database_route(request: Request, admin: dict = Depends(current_admin)):
+    # Strict safety gate against catastrophic data loss
+    allow_reset = os.environ.get("ALLOW_DANGEROUS_RESET", "false").lower() in ("true", "1")
+    if not allow_reset:
+        raise HTTPException(
+            status_code=403,
+            detail="Database reset is permanently disabled for data safety. Set ALLOW_DANGEROUS_RESET=true in environment to override."
+        )
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if body.get("confirm_phrase") != "PERMANENTLY_RESET_DIVINE_YOGA":
+        raise HTTPException(
+            status_code=400,
+            detail="Confirmation phrase 'PERMANENTLY_RESET_DIVINE_YOGA' is required to confirm database reset."
+        )
     from core.database import create_indexes
     from services.seed import seed_data
     collections = await db.list_collection_names()
@@ -49,6 +68,40 @@ async def reset_database_route(request: Request, admin: dict = Depends(current_a
     await seed_data()
     await audit("reset_database", request, admin["id"])
     return {"message": "Database successfully reset and re-seeded cleanly"}
+
+
+@router.get("/database/backup")
+async def export_database_backup(request: Request, admin: dict = Depends(current_admin)):
+    """Export all studio collections as a structured JSON snapshot for zero-data-loss protection."""
+    backup_data = {
+        "studio": "Divine Yoga Studio",
+        "timestamp": now_iso(),
+        "exported_by": admin.get("email"),
+        "collections": {}
+    }
+    collection_names = [
+        "clients",
+        "payments",
+        "subscriptions",
+        "batches",
+        "membership_plans",
+        "reminder_templates",
+        "reminder_logs",
+        "system_settings",
+    ]
+    for coll in collection_names:
+        docs = await db[coll].find({}, {"_id": 0}).to_list(5000)
+        backup_data["collections"][coll] = docs
+
+    await audit("database_backup_exported", request, admin["id"], {"collections": collection_names})
+    backup_json = json.dumps(backup_data, indent=2, default=str)
+    filename = f"divine-yoga-backup-{date.today().isoformat()}.json"
+    return StreamingResponse(
+        io.BytesIO(backup_json.encode("utf-8")),
+        media_type="application/json",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
 
 
 def document(input_data) -> dict:
@@ -115,8 +168,10 @@ async def list_clients(search: str = "", status: str = "", batch_id: str = ""):
     if batch_id:
         query["batch_id"] = batch_id
     if search:
-        query["$or"] = [{"full_name": {"$regex": search, "$options": "i"}}, {"phone_number": {"$regex": search, "$options": "i"}}]
+        escaped = re.escape(search.strip())
+        query["$or"] = [{"full_name": {"$regex": escaped, "$options": "i"}}, {"phone_number": {"$regex": escaped, "$options": "i"}}]
     return await db.clients.find(query, {"_id": 0, "medical_notes": 0}).sort("created_at", -1).to_list(500)
+
 
 
 @router.post("/clients")
@@ -261,8 +316,10 @@ async def update_client(client_id: str, input: ClientInput, request: Request, ad
 async def delete_client(client_id: str, request: Request, admin: dict = Depends(current_admin)):
     await find_or_404("clients", client_id)
     await db.clients.update_one({"id": client_id}, {"$set": {"is_deleted": True, "status": "cancelled", "updated_at": now_iso()}})
+    await db.subscriptions.update_many({"client_id": client_id, "status": "active"}, {"$set": {"status": "cancelled", "updated_at": now_iso()}})
     await audit("client_deleted", request, admin["id"], {"client_id": client_id})
     return {"ok": True}
+
 
 
 @router.get("/batches")
@@ -274,6 +331,7 @@ async def list_batches():
 async def create_batch(input: BatchInput, request: Request, admin: dict = Depends(current_admin)):
     data = document(input) | {"id": record_id(), "created_at": now_iso()}
     await db.batches.insert_one(data)
+    data.pop("_id", None)
     await audit("batch_created", request, admin["id"], {"batch_id": data["id"]})
     return data
 
@@ -291,6 +349,13 @@ async def update_batch(batch_id: str, input: BatchInput, request: Request, admin
 @router.delete("/batches/{batch_id}")
 async def delete_batch(batch_id: str, request: Request, admin: dict = Depends(current_admin)):
     await find_or_404("batches", batch_id)
+    # Referential integrity check: Ensure active clients are not enrolled in this batch
+    active_count = await db.clients.count_documents({"batch_id": batch_id, "is_deleted": {"$ne": True}})
+    if active_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete batch: {active_count} active client(s) are assigned to it. Reassign clients or mark batch inactive instead."
+        )
     await db.batches.delete_one({"id": batch_id})
     await audit("batch_deleted", request, admin["id"], {"batch_id": batch_id})
     return {"ok": True}
@@ -305,8 +370,10 @@ async def list_plans():
 async def create_plan(input: PlanInput, request: Request, admin: dict = Depends(current_admin)):
     data = document(input) | {"id": record_id()}
     await db.membership_plans.insert_one(data)
+    data.pop("_id", None)
     await audit("plan_created", request, admin["id"], {"plan_id": data["id"]})
     return data
+
 
 
 @router.patch("/plans/{plan_id}")
@@ -321,9 +388,18 @@ async def update_plan(plan_id: str, input: PlanInput, request: Request, admin: d
 @router.delete("/plans/{plan_id}")
 async def delete_plan(plan_id: str, request: Request, admin: dict = Depends(current_admin)):
     await find_or_404("membership_plans", plan_id)
+    # Referential integrity check: Ensure active clients or subscriptions do not reference this plan
+    active_client_count = await db.clients.count_documents({"plan_id": plan_id, "is_deleted": {"$ne": True}})
+    active_sub_count = await db.subscriptions.count_documents({"plan_id": plan_id, "status": "active"})
+    if active_client_count > 0 or active_sub_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete membership plan: {active_client_count} active client(s) and {active_sub_count} active subscription(s) reference it. Deactivate the plan instead."
+        )
     await db.membership_plans.delete_one({"id": plan_id})
     await audit("plan_deleted", request, admin["id"], {"plan_id": plan_id})
     return {"ok": True}
+
 
 
 # --- Expiring Memberships & Plan Renewals ---

@@ -33,6 +33,7 @@ async def create_subscription(input: SubscriptionInput, request: Request, admin:
     subscription = {"id": record_id(), "client_id": input.client_id, "plan_id": input.plan_id, "start_date": str(start), "end_date": str(start + timedelta(days=plan["duration_days"])), "status": "active", "auto_renew": input.auto_renew}
     await db.client_subscriptions.insert_one(subscription)
     await db.payments.insert_one({"id": record_id(), "client_id": input.client_id, "subscription_id": subscription["id"], "amount_due": plan["amount"], "amount_paid": 0, "due_date": str(start), "paid_date": None, "payment_status": payment_status(plan["amount"], 0, str(start)), "payment_mode": None, "transaction_ref": None, "notes": f"{plan['name']} membership", "recorded_by": admin["email"], "is_void": False, "created_at": now_iso(), "updated_at": now_iso()})
+    subscription.pop("_id", None)
     await audit("subscription_created", request, admin["id"], {"subscription_id": subscription["id"]})
     return subscription
 
@@ -57,8 +58,10 @@ async def create_payment(input: PaymentInput, request: Request, admin: dict = De
     data = input.model_dump(mode="json")
     data.update({"id": record_id(), "payment_status": payment_status(data["amount_due"], data["amount_paid"], data["due_date"]), "recorded_by": admin["email"], "is_void": False, "created_at": now_iso(), "updated_at": now_iso()})
     await db.payments.insert_one(data)
+    data.pop("_id", None)
     await audit("payment_created", request, admin["id"], {"payment_id": data["id"]})
     return data
+
 
 
 @router.patch("/payments/{payment_id}")
